@@ -5,7 +5,63 @@ if [ "${DEBUG}" = "true" ]; then
     set -x
 fi
 
-/ydb --endpoint grpc://localhost:${GRPC_PORT} --database /local --no-discovery sql -s "select 1" >/dev/null
-/ydb --endpoint grpc://localhost:${GRPC_PORT} --database /local --no-discovery scheme ls /local >/dev/null
-/ydb --endpoint grpc://localhost:${GRPC_PORT} --database /local --no-discovery sql -s 'create table if not exists `/local/.sys_health/test` (key int32, value utf8, primary key(key))' >/dev/null
-/ydb --endpoint grpc://localhost:${GRPC_PORT} --database /local --no-discovery sql -s 'drop table `/local/.sys_health/test`' >/dev/null
+# Configuration
+HEAVY_CHECK_INTERVAL=1      # seconds: frequency of heavy checks during startup
+LIGHT_CHECK_INTERVAL=60    # seconds: frequency of light checks after transition
+SWITCH_THRESHOLD=60        # seconds: force transition to light checks after this time
+STATE_FILE="/tmp/health-state"  # flag file indicating transition to light checks
+
+# Get current Unix timestamp in seconds
+now_seconds() {
+    date +%s
+}
+
+# Heavy check (comprehensive verification)
+heavy_check() {
+    /ydb --endpoint grpc://localhost:${GRPC_PORT} --database /local --no-discovery sql -s "select 1" >/dev/null
+    /ydb --endpoint grpc://localhost:${GRPC_PORT} --database /local --no-discovery scheme ls /local >/dev/null
+    /ydb --endpoint grpc://localhost:${GRPC_PORT} --database /local --no-discovery sql -s 'create table if not exists `/local/.sys_health/test` (key int32, value utf8, primary key(key))' >/dev/null
+    /ydb --endpoint grpc://localhost:${GRPC_PORT} --database /local --no-discovery sql -s 'drop table `/local/.sys_health/test`' >/dev/null
+    echo "heavy_check: OK"
+}
+
+# Light check (quick verification)
+light_check() {
+    /ydb --endpoint grpc://localhost:${GRPC_PORT} --database /local --no-discovery monitoring healthcheck | grep -q GOOD
+    echo "light_check: OK"
+}
+
+# Main logic
+current_time=$(now_seconds)
+
+# If state file doesn't exist — we're in startup mode
+if [ ! -f "$STATE_FILE" ]; then
+    # Perform heavy check
+    if heavy_check; then
+        # Success: record transition time and switch to light checks
+        echo "$current_time" > "$STATE_FILE"
+        exit 0
+    else
+        echo "heavy_check: FAILED"
+        exit 1
+    fi
+else
+    # Already transitioned to light checks: read transition timestamp
+    switch_time=$(cat "$STATE_FILE")
+
+    # If less than LIGHT_CHECK_INTERVAL has passed since transition — skip (NOP)
+    time_since_switch=$((current_time - switch_time))
+    if [ "$time_since_switch" -lt "$LIGHT_CHECK_INTERVAL" ]; then
+        echo "light_check: SKIPPED (too soon)"
+        exit 0  # Docker treats this as successful check (NOP)
+    fi
+
+    # Otherwise, perform light check
+    if light_check; then
+        echo "light_check: OK"
+        exit 0
+    else
+        echo "light_check: FAILED"
+        exit 1
+    fi
+fi
