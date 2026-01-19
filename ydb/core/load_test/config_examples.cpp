@@ -81,6 +81,13 @@ TVector<TConfigTemplate> BuildExamples() {
     SoftLoad: false
     UseProtobufWithPayload: false
 })_"
+        },
+        TConfigTemplate{
+            .LoadName = "NBS2Load",
+            .Template = R"_(NBS2Load: {
+    DurationSeconds: 30
+    TestParam: "maks_ololo"
+})_"
         }
     };
     return result;

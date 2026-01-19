@@ -36,6 +36,7 @@ SRCS(
     keyvalue_write.cpp
     kqp.cpp
     memory.cpp
+    nbs2_load_actor.cpp
     pdisk_log.cpp
     pdisk_read.cpp
     pdisk_write.cpp

@@ -456,11 +456,13 @@ enum EServiceKikimr {
     LOCAL_DB_BACKUP = 3700;
 
     SCHEMA_SECRET_CACHE = 3800;
+    NBS2_LOAD_TEST = 3900;
 };
 
 message TActivity {
 
     // Must be consistent with IActor::EActorActivity in ActorLib's part.
+        // TODO check it for new nbs2 activity
     // NOTE: all values are used as indices in counters array.
     // NOTE: numeric values can be changed and must be used only locally (inside one process),
     //  only string names are reported in monitoring.
@@ -1140,5 +1142,6 @@ message TActivity {
         FILTER_KMEANS_SCAN_ACTOR = 675;
         BS_SYNC_SST_WRITER = 676;
         BS_ASYNC_SYNC_SST_COMMITTER = 677;
+        NBS2_TEST_WORKLOAD = 678;
     };
 };
