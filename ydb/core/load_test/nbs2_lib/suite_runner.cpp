@@ -1,0 +1,101 @@
+#include "suite_runner.h"
+
+#include "helpers.h"
+#include "request_generator.h"
+
+#include <ydb/core/nbs/blockstore/libs/storage/model/public.h>
+#include <ydb/core/nbs/storage/core/libs/diagnostics/logging.h>
+//#include <cloud/blockstore/libs/validation/validation.h>
+
+namespace NCloud::NBlockStore::NLoadTest {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TSuiteRunner::TSuiteRunner(
+        TAppContext& appContext,
+        const TString& testName,
+        TTestContext& testContext)
+    : AppContext(appContext)
+    , LoggingTag(MakeLoggingTag(testName))
+    , TestContext(testContext)
+    , StartTime(Now())
+{
+    TLogSettings logSettings;
+    logSettings.FiltrationLevel = ELogPriority::TLOG_ERR;
+    Logging = CreateLoggingService("console", logSettings);
+}
+
+void TSuiteRunner::StartSubtest(const NProto::TRangeTest& range)
+{
+    auto runner = CreateTestRunner(
+        Logging,
+        LoggingTag,
+        CreateArtificialRequestGenerator(Logging, range),
+        range.GetIoDepth(),
+        TestContext.ShouldStop);
+
+    RegisterSubtest(std::move(runner));
+}
+
+void TSuiteRunner::RegisterSubtest(ITestRunnerPtr runner)
+{
+    runner->Run().Subscribe([&] (const auto& future) mutable {
+        const auto& testResults = future.GetValue();
+
+        with_lock (TestContext.WaitMutex) {
+            ++CompletedSubtests;
+
+            if (Results.Status == NProto::TEST_STATUS_OK) {
+                Results.Status = testResults->Status;
+            }
+
+            Results.RequestsCompleted += testResults->RequestsCompleted;
+
+            Results.BlocksRead += testResults->BlocksRead;
+            Results.BlocksWritten += testResults->BlocksWritten;
+            Results.BlocksZeroed += testResults->BlocksZeroed;
+
+            Results.ReadHist.Add(testResults->ReadHist);
+            Results.WriteHist.Add(testResults->WriteHist);
+            Results.ZeroHist.Add(testResults->ZeroHist);
+
+            switch (testResults->Status) {
+                case NProto::TEST_STATUS_FAILURE:
+                    AppContext.FailedTests.fetch_add(1);
+                    break;
+                case NProto::TEST_STATUS_EXPECTED_ERROR:
+                    StopTest(TestContext);
+                    break;
+                default:
+                    break;
+            }
+
+            TestContext.WaitCondVar.Signal();
+            TestContext.Finished.store(true, std::memory_order_release);
+        }
+    });
+
+    Subtests.push_back(std::move(runner));
+}
+
+void TSuiteRunner::Wait(ui64 duration)
+{
+    TInstant expectedEnd = TInstant::Max();
+    if (duration) {
+        expectedEnd = StartTime + TDuration::Seconds(duration);
+    }
+
+    with_lock (TestContext.WaitMutex) {
+        while (CompletedSubtests < Subtests.size()) {
+            TestContext.WaitCondVar.WaitD(
+                TestContext.WaitMutex, expectedEnd);
+            if (TInstant::Now() > expectedEnd
+                    && !AppContext.ShouldStop.load(std::memory_order_acquire))
+            {
+                StopTest(TestContext);
+            }
+        }
+    }
+}
+
+}   // namespace NCloud::NBlockStore::NLoadTest
