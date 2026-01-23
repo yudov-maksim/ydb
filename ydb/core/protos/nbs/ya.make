@@ -11,6 +11,7 @@ ENDIF()
 
 SRCS(
     blockstore.proto
+    error.proto
 )
 
 CPP_PROTO_PLUGIN0(config_proto_plugin ydb/core/config/tools/protobuf_plugin)

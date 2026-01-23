@@ -1,6 +1,7 @@
 import "ydb/core/protos/blobstorage_base.proto";
 import "ydb/core/protos/blobstorage_disk.proto";
 import "ydb/core/protos/datashard_load.proto";
+import "ydb/core/protos/nbs2_load.proto";
 
 package NKikimr;
 option java_package = "ru.yandex.kikimr.proto";
@@ -272,6 +273,7 @@ message TEvLoadTestRequest {
         optional string Name = 2;
         optional uint32 DurationSeconds = 3;
         optional string TestParam = 4;
+        optional NCloud.NBlockStore.NProto.TRangeTest RangeTest = 5;
     }
 
     message TMemoryLoad {
