@@ -1,6 +1,6 @@
 #include "error.h"
 
-#include <ydb/core/nbs/storage/core/libs/common/helpers.h>
+#include <ydb/core/nbs/cloud/storage/core/libs/common/helpers.h>
 
 #include <util/stream/format.h>
 #include <util/stream/output.h>

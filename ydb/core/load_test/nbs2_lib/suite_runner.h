@@ -3,7 +3,7 @@
 #include "app_context.h"
 #include "test_runner.h"
 
-#include <ydb/core/nbs/blockstore/libs/diagnostics/public.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/diagnostics/public.h>
 #include <ydb/core/protos/load_test.pb.h>
 #include <ydb/core/protos/nbs2_load.pb.h>
 

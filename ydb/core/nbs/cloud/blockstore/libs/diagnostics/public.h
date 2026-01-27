@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ydb/core/nbs/storage/core/libs/diagnostics/public.h>
+#include <ydb/core/nbs/cloud/storage/core/libs/diagnostics/public.h>
 
 #include <util/datetime/base.h>
 

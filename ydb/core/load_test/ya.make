@@ -14,8 +14,10 @@ PEERDIR(
     ydb/core/jaeger_tracing
     ydb/core/kqp/common
     ydb/core/kqp/rm_service
-    ydb/core/nbs/blockstore/libs
-    ydb/core/nbs/storage/core/libs
+    ydb/core/nbs/cloud/blockstore/libs/common
+    ydb/core/nbs/cloud/blockstore/libs/service
+    ydb/core/nbs/cloud/storage/core/libs/common
+    ydb/core/nbs/cloud/storage/core/libs/diagnostics
     ydb/core/tx/columnshard
     ydb/core/tx/datashard
     ydb/library/workload/abstract

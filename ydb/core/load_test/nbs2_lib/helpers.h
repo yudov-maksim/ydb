@@ -2,7 +2,7 @@
 
 #include "app_context.h"
 
-#include <ydb/core/nbs/storage/core/libs/common/error.h>
+#include <ydb/core/nbs/cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/threading/future/future.h>
 

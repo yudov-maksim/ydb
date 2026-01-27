@@ -1,4 +1,3 @@
-#RECURSE(
-#    blockstore/libs
-#    storage/core/libs
-#)
+RECURSE(
+    cloud
+)

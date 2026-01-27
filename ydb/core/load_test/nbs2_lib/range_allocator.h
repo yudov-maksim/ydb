@@ -2,8 +2,7 @@
 
 #include "public.h"
 
-//#include <cloud/blockstore/libs/client/public.h>
-#include <ydb/core/nbs/blockstore/libs/common/block_range.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/common/block_range.h>
 
 #include <ydb/core/protos/nbs2_load.pb.h>
 

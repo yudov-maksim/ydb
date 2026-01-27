@@ -1,6 +1,6 @@
 #include "logging.h"
 
-#include <ydb/core/nbs/storage/core/libs/common/thread.h>
+#include <ydb/core/nbs/cloud/storage/core/libs/common/thread.h>
 
 #include <library/cpp/unified_agent_client/client.h>
 #include <library/cpp/unified_agent_client/backend.h>

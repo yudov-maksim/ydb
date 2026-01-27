@@ -1,6 +1,6 @@
 #include "buffer_pool.h"
 
-#include <ydb/core/nbs/storage/core/libs/common/page_size.h>
+#include <ydb/core/nbs/cloud/storage/core/libs/common/page_size.h>
 
 #include <util/generic/singleton.h>
 #include <util/memory/alloc.h>

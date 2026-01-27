@@ -6,7 +6,7 @@
 
 #include <ydb/core/base/counters.h>
 #include <ydb/core/blobstorage/base/blobstorage_events.h>
-#include <ydb/core/nbs/storage/core/libs/diagnostics/histogram.h>
+#include <ydb/core/nbs/cloud/storage/core/libs/diagnostics/histogram.h>
 
 #include <ydb/library/workload/abstract/workload_factory.h>
 #include <ydb/library/workload/stock/stock.h>

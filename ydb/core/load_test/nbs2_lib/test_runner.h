@@ -2,10 +2,8 @@
 
 #include "public.h"
 
-//#include <cloud/blockstore/libs/client/public.h>
-#include <ydb/core/nbs/blockstore/libs/diagnostics/public.h>
-//#include <ydb/core/nbs/blockstore/libs/validation/public.h>
-#include <ydb/core/nbs/storage/core/libs/diagnostics/histogram.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/diagnostics/public.h>
+#include <ydb/core/nbs/cloud/storage/core/libs/diagnostics/histogram.h>
 #include <ydb/core/protos/load_test.pb.h>
 #include <ydb/core/protos/nbs2_load.pb.h>
 

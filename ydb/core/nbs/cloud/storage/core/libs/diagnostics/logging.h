@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <ydb/core/nbs/storage/core/libs/common/startable.h>
+#include <ydb/core/nbs/cloud/storage/core/libs/common/startable.h>
 
 #include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/logger/log.h>

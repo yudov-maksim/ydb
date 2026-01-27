@@ -3,12 +3,7 @@
 #include "range_allocator.h"
 #include "range_map.h"
 
-//#include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
-//#include <cloud/blockstore/libs/service/request_helpers.h>
-#include <ydb/core/nbs/storage/core/libs/diagnostics/logging.h>
-
-//#include <library/cpp/eventlog/dumper/evlogdump.h>
-//#include <library/cpp/eventlog/eventlog.h>
+#include <ydb/core/nbs/cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/vector.h>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ydb/core/nbs//blockstore/libs/common/public.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/common/public.h>
 
 #include <util/generic/utility.h>
 #include <util/generic/ylimits.h>

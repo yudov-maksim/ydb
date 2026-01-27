@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <ydb/core/nbs/storage/core/libs/common/context.h>
+#include <ydb/core/nbs/cloud/storage/core/libs/common/context.h>
 
 namespace NCloud::NBlockStore {
 

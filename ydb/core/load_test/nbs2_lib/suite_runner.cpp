@@ -3,9 +3,8 @@
 #include "helpers.h"
 #include "request_generator.h"
 
-#include <ydb/core/nbs/blockstore/libs/storage/model/public.h>
-#include <ydb/core/nbs/storage/core/libs/diagnostics/logging.h>
-//#include <cloud/blockstore/libs/validation/validation.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/storage/model/public.h>
+#include <ydb/core/nbs/cloud/storage/core/libs/diagnostics/logging.h>
 
 namespace NCloud::NBlockStore::NLoadTest {
 
