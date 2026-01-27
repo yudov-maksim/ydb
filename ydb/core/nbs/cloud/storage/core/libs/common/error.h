@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <ydb/core/protos/nbs/error.pb.h>
+#include <ydb/core/nbs/cloud/storage/core/protos/error.pb.h>
 
 #include <library/cpp/json/writer/json_value.h>
 #include <library/cpp/threading/future/future.h>
