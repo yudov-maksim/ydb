@@ -14,11 +14,13 @@ namespace NCloud::NBlockStore::NLoadTest {
 TSuiteRunner::TSuiteRunner(
         TAppContext& appContext,
         const TString& testName,
-        TTestContext& testContext)
+        TTestContext& testContext,
+        CB finishCallBack)
     : AppContext(appContext)
     , LoggingTag(MakeLoggingTag(testName))
     , TestContext(testContext)
     , StartTime(Now())
+    , FinishCallBack(std::move(finishCallBack))
 {
     TLogSettings logSettings;
     logSettings.FiltrationLevel = ELogPriority::TLOG_ERR;
@@ -73,6 +75,7 @@ void TSuiteRunner::RegisterSubtest(ITestRunnerPtr runner)
             TestContext.WaitCondVar.Signal();
             TestContext.Finished.store(true, std::memory_order_release);
         }
+        //FinishCallBack();
     });
 
     Subtests.push_back(std::move(runner));
@@ -80,6 +83,7 @@ void TSuiteRunner::RegisterSubtest(ITestRunnerPtr runner)
 
 void TSuiteRunner::Wait(ui64 duration)
 {
+    //Y_ABORT("TSuiteRunner::Wait is temporarily unsupported");
     TInstant expectedEnd = TInstant::Max();
     if (duration) {
         expectedEnd = StartTime + TDuration::Seconds(duration);

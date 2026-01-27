@@ -1,10 +1,12 @@
 #include "service_actor.h"
 
 #include "nbs2_lib/app_context.h"
+#include "nbs2_lib/helpers.h"
 #include "nbs2_lib/suite_runner.h"
 
 #include <ydb/core/base/counters.h>
 #include <ydb/core/blobstorage/base/blobstorage_events.h>
+#include <ydb/core/nbs/storage/core/libs/diagnostics/histogram.h>
 
 #include <ydb/library/workload/abstract/workload_factory.h>
 #include <ydb/library/workload/stock/stock.h>
@@ -14,12 +16,31 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/histogram/hdr/histogram.h>
+#include <library/cpp/protobuf/json/proto2json.h>
 #include <library/cpp/time_provider/time_provider.h>
 
 #include <util/generic/queue.h>
 #include <util/random/fast.h>
 #include <util/random/shuffle.h>
 
+namespace {
+
+void FillLatency(
+    const NCloud::TLatencyHistogram& hist,
+    NCloud::NBlockStore::NProto::TLatency& latency)
+{
+    latency.SetP50(hist.GetValueAtPercentile(50));
+    latency.SetP90(hist.GetValueAtPercentile(90));
+    latency.SetP95(hist.GetValueAtPercentile(95));
+    latency.SetP99(hist.GetValueAtPercentile(99));
+    latency.SetP999(hist.GetValueAtPercentile(99.9));
+    latency.SetMin(hist.GetMin());
+    latency.SetMax(hist.GetMax());
+    latency.SetMean(hist.GetMean());
+    latency.SetStdDeviation(hist.GetStdDeviation());
+}
+
+} // namespace
 
 namespace NKikimr {
 
@@ -53,68 +74,77 @@ public:
     }
 
     void Bootstrap(const TActorContext& ctx) {
-        LOG_DEBUG_S(ctx, NKikimrServices::NBS2_LOAD_TEST, "Tag# " << Tag << " TNBS2LoadActor Bootstrap called");
+        // TODO delete all 'maks_ololo' there and in nbs_lib
+        LOG_ERROR_S(ctx, NKikimrServices::NBS2_LOAD_TEST, "Tag# " << Tag << " maks_ololo TNBS2LoadActor Bootstrap called");
+
+        ctx.Schedule(TDuration::Seconds(DurationSeconds + 3), new TEvents::TEvPoisonPill);
+        LOG_ERROR_S(ctx, NKikimrServices::NBS2_LOAD_TEST, "Tag# " << Tag << " maks_ololo Schedule PoisonPill");
 
         Become(&TNBS2LoadActor::StateStart);
-        LOG_INFO_S(ctx, NKikimrServices::NBS2_LOAD_TEST, "Tag# " << Tag << " Schedule PoisonPill");
-
-        ctx.Schedule(TDuration::Seconds(DurationSeconds + 1), new TEvents::TEvPoisonPill);
-        DoLoadTest(ctx);
+        RunTest(ctx);
     }
 
-     NCloud::NBlockStore::NProto::ETestStatus RunTest(
-        const TActorContext& ctx,
-        NCloud::NBlockStore::NLoadTest::TAppContext& appContext,
-        NCloud::NBlockStore::NLoadTest::TTestContext& testContext
+    void LoadTestCallback(const TActorContext& ctx)
+    {
+        using namespace NCloud::NBlockStore;
+        LOG_ERROR_S(ctx, NKikimrServices::NBS2_LOAD_TEST, " maks_ololo Completed test " << Name);
+
+        auto stopped = TInstant::Now();
+        NJson::TJsonValue result;
+
+        const auto& suiteResults = SuiteRunner->GetResults();
+        NProto::TTestResults proto;
+        proto.SetName(Name);
+        proto.SetResult(suiteResults.Status);
+        proto.SetStartTime(SuiteRunner->GetStartTime().MicroSeconds());
+        proto.SetEndTime(stopped.MicroSeconds());
+        proto.SetRequestsCompleted(suiteResults.RequestsCompleted);
+
+        if (suiteResults.BlocksRead) {
+            proto.SetBlocksRead(suiteResults.BlocksRead);
+            FillLatency(suiteResults.ReadHist, *proto.MutableReadLatency());
+        }
+
+        if (suiteResults.BlocksWritten) {
+            proto.SetBlocksWritten(suiteResults.BlocksWritten);
+            FillLatency(suiteResults.WriteHist, *proto.MutableWriteLatency());
+        }
+
+        if (suiteResults.BlocksZeroed) {
+            proto.SetBlocksZeroed(suiteResults.BlocksZeroed);
+            FillLatency(suiteResults.ZeroHist, *proto.MutableZeroLatency());
+        }
+
+        NProtobufJson::Proto2Json(proto, result["TestResults"], {});
+        TestContext.Result = NJson::WriteJson(result, false, false, false);
+
+        SendTestResult(ctx);
+    }
+
+     void RunTest(
+        const TActorContext& ctx
     ) {
-        using namespace NCloud::NBlockStore::NLoadTest;
-        LOG_DEBUG_S(ctx, NKikimrServices::NBS2_LOAD_TEST, "Tag# " << Tag << " RunTest called");
+        using namespace NCloud::NBlockStore;
+        LOG_ERROR_S(ctx, NKikimrServices::NBS2_LOAD_TEST, "Tag# " << Tag << " maks_ololo RunTest called");
 
 
-        TSuiteRunner suiteRunner(
-            appContext,
-            Name,
-            testContext
+        //auto callback = [this, actorContext = &ctx ] () {
+        //    LoadTestCallback(*actorContext);
+        //};
+        auto callback = [] () {
+        };
+
+        SuiteRunner.Reset(
+            new NCloud::NBlockStore::NLoadTest::TSuiteRunner(
+                AppContext,
+                Name,
+                TestContext,
+                std::move(callback)
+            )
         );
 
-        //for (const auto& range: test.GetRanges()) {
-        suiteRunner.StartSubtest(RangeTest);
-
-        suiteRunner.Wait(DurationSeconds); // todo проверить ожидаемые единицы измерения
-
-        const auto& suiteResults = suiteRunner.GetResults();
-        // todo заполнить result
-        // NProto::TTestResults proto; ...
-        return suiteResults.Status;
+        SuiteRunner->StartSubtest(RangeTest);
      }
-
-    void DoLoadTest(const TActorContext& ctx) {
-        using namespace NCloud::NBlockStore::NLoadTest;
-        LOG_DEBUG_S(ctx, NKikimrServices::NBS2_LOAD_TEST, "Tag# " << Tag << " DoLoadTest called");
-
-        TAppContext appContext;
-        TTestContext testContext; // todo print Result
-
-        try {
-            // SetupTest(test, dependencies, SuccessOnError(test));
-            // кажется, проверка ShouldStop тут не нужна
-            if (!appContext.ShouldStop.load(std::memory_order_acquire)) {
-                auto testResult = RunTest(ctx, appContext, testContext);
-                if (testResult == NCloud::NBlockStore::NProto::TEST_STATUS_FAILURE) {
-                    appContext.FailedTests.fetch_add(1);
-                    return; // return 1;
-                }
-            }
-
-            // TeardownTest(test, SuccessOnError(test));
-        } catch (...) {
-            LOG_ERROR_S(ctx, NKikimrServices::NBS2_LOAD_TEST, "Exception during test execution: "
-                << CurrentExceptionMessage());
-            appContext.FailedTests.fetch_add(1);
-            return;
-            //return EC_LOAD_TEST_FAILED;
-        }
-    }
 
     STRICT_STFUNC(StateStart,
         CFunc(TEvents::TSystem::PoisonPill, HandlePoisonPill)
@@ -124,14 +154,42 @@ public:
 private:
 
     // death
-
     void HandlePoisonPill(const TActorContext& ctx) {
-        Y_UNUSED(ctx);
-        // TODO copypast from vdisk_write
+        LOG_ERROR_S(ctx, NKikimrServices::NBS2_LOAD_TEST, "Tag# " << Tag << " maks_ololo HandlePoisonPill called");
+
+        // todo if !test.finished
+        NCloud::NBlockStore::NLoadTest::StopTest(TestContext);
+        SuiteRunner->Wait(1);
+        PoisonPillRecieved = true;
+
+        LOG_ERROR_S(ctx, NKikimrServices::NBS2_LOAD_TEST, "Tag# " << Tag << " maks_ololo HandlePoisonPill after wait");
+        //DieIfNeed(ctx);
+        LoadTestCallback(ctx);
+    }
+
+    void SendTestResult(const TActorContext& ctx) {
+        TestResultSent = true;
+
+        TIntrusivePtr<TEvLoad::TLoadReport> report = nullptr;
+        report.Reset(new TEvLoad::TLoadReport());
+        report->Duration = TDuration::Seconds(DurationSeconds);
+
+        // todo добавить и нормальный результат в reason
+        auto* finishEv = new TEvLoad::TEvLoadTestFinished(Tag, report, "Poison pill");
+        finishEv->LastHtmlPage = RenderHTML();
+        //finishEv->JsonResult = GetJsonResult();
+        ctx.Send(Parent, finishEv);
+        DieIfNeed(ctx);
+    }
+
+    void DieIfNeed(const TActorContext& ctx) {
+        if (PoisonPillRecieved && TestResultSent) {
+            LOG_ERROR_S(ctx, NKikimrServices::NBS2_LOAD_TEST, "Tag# " << Tag << " maks_ololo loadActor has been finifshed");
+            Die(ctx);
+        }
     }
 
 private:
-
 
     TString RenderHTML() {
         TStringStream str;
@@ -148,6 +206,9 @@ private:
                         TABLEH() {
                             str << "Name";
                         }
+                        TABLEH() {
+                            str << "TestResults";
+                        }
                     }
                 }
                 TABLEBODY() {
@@ -160,6 +221,9 @@ private:
                         };
                         TABLED() {
                             str << Name;
+                        };
+                        TABLED() {
+                            str << TestContext.Result.Str();
                         };
                     }
                 }
@@ -182,8 +246,13 @@ private:
     ui32 DurationSeconds;
     TString TestParam;
     TString Name;
-    NCloud::NBlockStore::NProto::TRangeTest RangeTest;
 
+    NCloud::NBlockStore::NProto::TRangeTest RangeTest;
+    NCloud::NBlockStore::NLoadTest::TAppContext AppContext; // TODO try to del me
+    NCloud::NBlockStore::NLoadTest::TTestContext TestContext;
+    TIntrusivePtr<NCloud::NBlockStore::NLoadTest::TSuiteRunner> SuiteRunner = nullptr;
+    bool PoisonPillRecieved = false;
+    bool TestResultSent = false;
     // ---
     TString ConfigString;
 };

@@ -85,8 +85,16 @@ TVector<TConfigTemplate> BuildExamples() {
         TConfigTemplate{
             .LoadName = "NBS2Load",
             .Template = R"_(NBS2Load: {
-    DurationSeconds: 30
+    DurationSeconds: 20
     TestParam: "maks_ololo"
+    RangeTest {
+        Start: 0
+        End: 786431
+        ReadRate: 100
+        LoadType: LOAD_TYPE_RANDOM
+        IoDepth: 1
+        MaxRequestSize: 256
+    }
 })_"
         }
     };

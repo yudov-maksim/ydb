@@ -15,8 +15,11 @@ namespace NCloud::NBlockStore::NLoadTest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSuiteRunner
+class TSuiteRunner: public TThrRefBase
 {
+public:
+    using CB = std::function<void()>;
+
 private:
     TAppContext& AppContext;
     ILoggingServicePtr Logging;
@@ -27,12 +30,14 @@ private:
     TTestResults Results;
     TVector<ITestRunnerPtr> Subtests;
     size_t CompletedSubtests = 0;
+    CB FinishCallBack;
 
 public:
     TSuiteRunner(
         TAppContext& appContext,
         const TString& testName,
-        TTestContext& testContext);
+        TTestContext& testContext,
+        CB cb = nullptr);
 
 public:
     TInstant GetStartTime() const

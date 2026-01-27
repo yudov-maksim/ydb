@@ -13,6 +13,8 @@
 #include <ydb/core/nbs/storage/core/libs/common/thread.h>
 #include <ydb/core/nbs/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/threading/future/core/future.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>
 #include <util/generic/vector.h>
@@ -219,13 +221,47 @@ bool TTestRunner::SendNextRequest()
     return true;
 }
 
+void doDummyWork(TPromise<NProto::TError> response)
+{
+    Sleep(TDuration::MilliSeconds(50));
+    NProto::TError result;
+    result.SetCode(NCloud::EWellKnownResultCodes::S_OK);
+    response.SetValue(result);
+}
+
+NThreading::TFuture<NProto::TError> getFuture()
+{
+    auto response = NewPromise<NProto::TError>();
+    doDummyWork(response);
+    return response;
+}
+
 void TTestRunner::SendReadRequest(const TBlockRange64& range)
 {
     STORAGE_DEBUG(LoggingTag
         << "ReadBlocks request: ("
         << range.Start << ", " << range.Size() << ")");
 
+    auto started = TInstant::Now();
+    auto future = getFuture();
+    future.Subscribe(
+    [started, range, future, this, p=shared_from_this()] (const auto& f) mutable {
+        STORAGE_INFO(LoggingTag
+                << "maks_ololo TTestRunner::SendReadRequest test future cb");
+        const auto& error = f.GetValue();
+        //const auto& error = response.GetError();
+        if (FAILED(error.GetCode())) {
+            STORAGE_ERROR(LoggingTag
+                << "ReadBlocks request failed with error: "
+                << FormatError(error));
+        }
 
+        p->SignalCompletion(
+            EBlockStoreRequest::ReadBlocks,
+            range,
+            error,
+            TInstant::Now() - started);
+    });
 }
 
 void TTestRunner::SendWriteRequest(const TBlockRange64& range)
@@ -235,6 +271,7 @@ void TTestRunner::SendWriteRequest(const TBlockRange64& range)
         << range.Start << ", " << range.Size() << ")");
 
     //Y_DEBUG_ABORT_UNLESS(Volume.GetBlockSize() >= sizeof(RequestsSent));
+    Y_ABORT("WriteBlocks is not supported");
 
 }
 
@@ -243,6 +280,7 @@ void TTestRunner::SendZeroRequest(const TBlockRange64& range)
     STORAGE_DEBUG(LoggingTag
         << "ZeroBlocks request: ("
         << range.Start << ", " << range.Size() << ")");
+    Y_ABORT("ZeroBlocks is not supported");
 }
 
 bool TTestRunner::StopRequested() const
