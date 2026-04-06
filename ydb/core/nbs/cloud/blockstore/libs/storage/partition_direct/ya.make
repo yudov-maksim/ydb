@@ -8,6 +8,7 @@ SRCS(
     fast_path_service.cpp
     flush_request.cpp
     load_actor_adapter.cpp
+    multi_source_read_coordinator.cpp
     partition_direct_actor.cpp
     partition_direct.cpp
     range_translate.cpp
