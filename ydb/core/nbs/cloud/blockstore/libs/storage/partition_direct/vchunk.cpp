@@ -300,35 +300,6 @@ void TVChunk::DoReadBlocksLocal(
         return;
     }
 
-    if (readHint.RangeHints.size() == 1) {
-        auto requestExecutor = std::make_shared<TReadRequestExecutor>(
-            ActorSystem,
-            VChunkConfig,
-            DirectBlockGroup,
-            std::move(readHint),
-            std::move(callContext),
-            std::move(request),
-            span->GetTraceId());
-
-        auto future = requestExecutor->GetFuture();
-        future.Subscribe(
-            [promise = std::move(promise),
-             span,
-             threadChecker = ExecutorThreadChecker.CreateDelegate()]   //
-            (const TFuture<TReadRequestExecutor::TResponse>& f) mutable
-            {
-                Y_ABORT_UNLESS(threadChecker.Check());
-
-                auto value = UnsafeExtractValue(f);
-                promise.SetValue(
-                    TReadBlocksLocalResponse{.Error = std::move(value.Error)});
-            });
-
-        span->Event("Run");
-        requestExecutor->Run();
-        return;
-    }
-
     // НОВОЕ: Сложный случай - несколько источников данных
     span->Event("MultiSource");
     span->Attribute(

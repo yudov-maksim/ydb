@@ -26,6 +26,23 @@ TMultiSourceReadCoordinator::TMultiSourceReadCoordinator(
         // Вычислить смещение в Sglist
         const size_t offsetBlocks = hint.RequestRelativeRange.Start;
         const size_t offsetBytes = offsetBlocks * blockSize;
+        const size_t sizeBytes = hint.RequestRelativeRange.Size() * blockSize;
+
+        // Создать подбуфер для этого подзапроса
+        auto subRequest = std::make_shared<TReadBlocksLocalRequest>(
+            Request->Headers.Clone(hint.VChunkRange));
+
+        // Создать подбуфер Sglist для данного диапазона
+        {
+            auto guard = Request->Sglist.Acquire();
+            if (guard) {
+                const TSgList& fullSgList = guard.Get();
+                TSgList subSgList =
+                    CreateSgListSubRange(fullSgList, offsetBytes, sizeBytes);
+                subRequest->Sglist =
+                    Request->Sglist.Create(std::move(subSgList));
+            }
+        }
 
         // Создать TReadHint с одним hint
         TReadHint singleHint;
@@ -38,12 +55,11 @@ TMultiSourceReadCoordinator::TMultiSourceReadCoordinator(
             DirectBlockGroup,
             std::move(singleHint),
             CallContext,
-            Request,
+            subRequest,
             NWilson::TTraceId(TraceId));
 
         SubRequests.push_back(TSubRequest{
             .Executor = std::move(executor),
-            //.Hint = hint,
             .SglistOffset = offsetBytes});
     }
 }

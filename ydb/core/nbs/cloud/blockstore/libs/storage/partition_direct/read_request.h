@@ -12,6 +12,7 @@ namespace NYdb::NBS::NBlockStore::NStorage::NPartitionDirect {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO incapsulate me. You should use TMultiSourceReadCoordinator
 class TReadRequestExecutor
     : public std::enable_shared_from_this<TReadRequestExecutor>
 {
