@@ -90,7 +90,9 @@ TICStorageTransportActor::~TICStorageTransportActor()
             NKikimrBlobStorage::NDDisk::TReplyStatus::ERROR,
             DestroyErrorMessage,
             request->PersistentBufferIds);
-        request->Promise.SetValue(std::move(response->Record));
+        if (request->Callback) {
+            request->Callback(std::move(response->Record));
+        }
     }
 }
 
@@ -321,11 +323,14 @@ void TICStorageTransportActor::HandleWriteToManyPersistentBuffersResult(
 
     if (auto* r = WriteToManyPBuffersRequests.FindPtr(requestId)) {
         auto& request = **r;
-        request.Promise.SetValue(std::move(ev->Get()->Record));
-        WriteToManyPBuffersRequests.erase(requestId);
+        if (request.Callback) {
+            request.Callback(ev->Get()->Record);
+        }
+        // Do NOT erase from map here: the callback may be called multiple
+        // times (e.g. a second response arrives after the first one).
+        // The entry is removed only when the request is fully done (i.e.
+        // when the upper layer no longer needs further responses).
     } else {
-        // That means that request is already completed
-        // TODO handle this case in writeRequests through weak_ptr with erase
         LOG_ERROR(
             ctx,
             NKikimrServices::NBS_PARTITION,

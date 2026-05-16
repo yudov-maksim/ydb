@@ -91,7 +91,7 @@ void TWriteWithPbReplicationRequestExecutor::Run()
 void TWriteWithPbReplicationRequestExecutor::SendWriteRequestToManyPBuffers(
     TVector<THostIndex> hosts)
 {
-    if (Promise.IsReady()) {
+    if (IsCallbackCalled()) {
         return;
     }
 
@@ -114,7 +114,7 @@ void TWriteWithPbReplicationRequestExecutor::SendWriteRequestToManyPBuffers(
         RequestedWrites.Set(host);
     }
 
-    auto future = DirectBlockGroup->WriteBlocksToManyPBuffers(
+    DirectBlockGroup->WriteBlocksToManyPBuffers(
         VChunkConfig.VChunkIndex,
         coordinatorHostIndex,
         std::move(hosts),
@@ -122,14 +122,12 @@ void TWriteWithPbReplicationRequestExecutor::SendWriteRequestToManyPBuffers(
         VChunkRange,
         PbufferReplyTimeout,
         Request->Sglist,
-        NWilson::TTraceId(TraceId));
-
-    future.Subscribe(
+        NWilson::TTraceId(TraceId),
         [self =
              std::static_pointer_cast<TWriteWithPbReplicationRequestExecutor>(
                  shared_from_this())](
-            const NThreading::TFuture<TDBGWriteBlocksToManyPBuffersResponse>& f)
-        { self->OnWriteToManyPBuffersResponse(f.GetValue()); });
+            TDBGWriteBlocksToManyPBuffersResponse response)
+        { self->OnWriteToManyPBuffersResponse(response); });
 }
 
 void TWriteWithPbReplicationRequestExecutor::OnWriteToManyPBuffersResponse(
@@ -255,7 +253,7 @@ void TWriteWithPbReplicationRequestExecutor::OnWriteResponse(
         Request->Headers.Range.Print().c_str());
 
     --ActiveDirectWritesNumber;
-    if (Promise.IsReady()) {
+    if (IsCallbackCalled()) {
         return;
     }
 
@@ -299,7 +297,7 @@ void TWriteWithPbReplicationRequestExecutor::ScheduleHedging()
             if (auto self = std::static_pointer_cast<
                     TWriteWithPbReplicationRequestExecutor>(weakSelf.lock()))
             {
-                if (!self->Promise.IsReady()) {
+                if (!self->IsCallbackCalled()) {
                     self->TryToSendDirectWrites(true);
                 }
             }

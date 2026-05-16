@@ -13,6 +13,8 @@
 #include <ydb/library/actors/core/actorsystem.h>
 #include <ydb/library/actors/wilson/wilson_span.h>
 
+#include <functional>
+
 namespace NYdb::NBS::NBlockStore::NStorage::NPartitionDirect {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,6 +33,8 @@ public:
         THostMask CompletedWrites;
     };
 
+    using TCallback = std::function<void(TResponse)>;
+
     TBaseWriteRequestExecutor(
         NActors::TActorSystem* actorSystem,
         const TVChunkConfig& vChunkConfig,
@@ -43,7 +47,9 @@ public:
 
     virtual ~TBaseWriteRequestExecutor();
 
-    [[nodiscard]] NThreading::TFuture<TResponse> GetFuture() const;
+    void SetCallback(TCallback callback);
+
+    [[nodiscard]] bool IsCallbackCalled() const;
 
     virtual void Run() = 0;
 
@@ -77,10 +83,12 @@ protected:
     const TDuration HedgingDelay;
     const TDuration RequestTimeout;
 
-    NThreading::TPromise<TResponse> Promise =
-        NThreading::NewPromise<TResponse>();
     THostMask RequestedWrites;
     THostMask CompletedWrites;
+
+private:
+    TCallback Callback;
+    bool CallbackCalled = false;
 };
 
 using TBaseWriteRequestExecutorPtr = std::shared_ptr<TBaseWriteRequestExecutor>;

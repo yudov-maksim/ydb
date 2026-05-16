@@ -38,7 +38,7 @@ TBaseWriteRequestExecutor::TBaseWriteRequestExecutor(
 
 TBaseWriteRequestExecutor::~TBaseWriteRequestExecutor()
 {
-    if (!Promise.IsReady()) {
+    if (!CallbackCalled) {
         LOG_ERROR(
             *ActorSystem,
             NKikimrServices::NBS_PARTITION,
@@ -50,10 +50,14 @@ TBaseWriteRequestExecutor::~TBaseWriteRequestExecutor()
     }
 }
 
-NThreading::TFuture<TBaseWriteRequestExecutor::TResponse>
-TBaseWriteRequestExecutor::GetFuture() const
+void TBaseWriteRequestExecutor::SetCallback(TCallback callback)
 {
-    return Promise.GetFuture();
+    Callback = std::move(callback);
+}
+
+bool TBaseWriteRequestExecutor::IsCallbackCalled() const
+{
+    return CallbackCalled;
 }
 
 void TBaseWriteRequestExecutor::LogOnReply(const NProto::TError& error) const
@@ -78,8 +82,15 @@ void TBaseWriteRequestExecutor::LogOnReply(const NProto::TError& error) const
 
 void TBaseWriteRequestExecutor::Reply(NProto::TError error)
 {
+    if (CallbackCalled) {
+        return;
+    }
+    CallbackCalled = true;
     LogOnReply(error);
-    Promise.TrySetValue(TResponse{
+    Y_ABORT_UNLESS(
+        Callback,
+        "TBaseWriteRequestExecutor::Reply called without callback set");
+    Callback(TResponse{
         .Error = std::move(error),
         .Lsn = Lsn,
         .RequestedWrites = RequestedWrites,
@@ -88,7 +99,7 @@ void TBaseWriteRequestExecutor::Reply(NProto::TError error)
 
 void TBaseWriteRequestExecutor::SendWriteRequest(THostIndex host)
 {
-    if (Promise.IsReady()) {
+    if (CallbackCalled) {
         return;
     }
 
@@ -120,7 +131,7 @@ void TBaseWriteRequestExecutor::OnWriteResponse(
     const TDBGWriteBlocksResponse& response,
     std::shared_ptr<NWilson::TSpan> span)
 {
-    if (Promise.IsReady()) {
+    if (CallbackCalled) {
         return;
     }
 

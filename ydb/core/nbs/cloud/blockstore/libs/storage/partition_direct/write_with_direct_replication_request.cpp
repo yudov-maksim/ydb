@@ -65,7 +65,7 @@ void TWriteWithDirectReplicationRequestExecutor::ScheduleHedging()
 void TWriteWithDirectReplicationRequestExecutor::
     SendWriteRequestsToHandoffPBuffers()
 {
-    if (Promise.IsReady()) {
+    if (IsCallbackCalled()) {
         return;
     }
 

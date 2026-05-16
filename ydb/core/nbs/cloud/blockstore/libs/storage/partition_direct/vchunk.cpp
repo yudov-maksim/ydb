@@ -382,13 +382,11 @@ void TVChunk::DoWriteBlocksLocal(
         lsn,
         span->GetTraceId());
 
-    auto future = writeExecutor->GetFuture();
-    future.Subscribe(
+    writeExecutor->SetCallback(
         [weakSelf = weak_from_this(),
          vchunkRange,
          promise = std::move(promise),
-         span]   //
-        (const TFuture<TBaseWriteRequestExecutor::TResponse>& f) mutable
+         span](TBaseWriteRequestExecutor::TResponse response) mutable
         {
             auto self = weakSelf.lock();
             if (!self) {
@@ -399,7 +397,7 @@ void TVChunk::DoWriteBlocksLocal(
             self->OnWriteBlocksResponse(
                 std::move(promise),
                 vchunkRange,
-                f.GetValue(),
+                response,
                 std::move(span));
         });
 

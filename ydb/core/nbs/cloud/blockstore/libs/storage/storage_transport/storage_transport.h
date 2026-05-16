@@ -6,6 +6,8 @@
 #include <ydb/core/mind/bscontroller/types.h>
 #include <ydb/core/protos/blobstorage_ddisk.pb.h>
 
+#include <functional>
+
 namespace NYdb::NBS::NBlockStore::NStorage::NTransport {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,6 +49,12 @@ public:
     using TEvListPersistentBufferResult =
         NKikimrBlobStorage::NDDisk::TEvListPersistentBufferResult;
 
+    // Callback type for WriteToManyPBuffers: called once per response received.
+    // May be called multiple times if the underlying transport delivers more
+    // than one response for the same request.
+    using TWriteToManyPBuffersCallback =
+        std::function<void(TEvWriteToManyPersistentBuffersResult)>;
+
     IStorageTransport() = default;
 
     virtual ~IStorageTransport() = default;
@@ -77,8 +85,10 @@ public:
         const TGuardedSgList& data,
         NWilson::TSpan* span) = 0;
 
-    virtual NThreading::TFuture<TEvWriteToManyPersistentBuffersResult>
-    WriteToManyPBuffers(
+    // Sends a write request to many persistent buffers.
+    // The callback is invoked once per response received from the transport
+    // layer (may be called more than once for the same request).
+    virtual void WriteToManyPBuffers(
         const THostConnection& connection,
         const NKikimr::NDDisk::TBlockSelector& selector,
         const ui64 lsn,
@@ -86,7 +96,8 @@ public:
         TVector<NKikimrBlobStorage::NDDisk::TDDiskId> persistentBufferIds,
         TDuration replyTimeout,
         const TGuardedSgList& data,
-        NWilson::TSpan* span) = 0;
+        NWilson::TSpan* span,
+        TWriteToManyPBuffersCallback callback) = 0;
 
     virtual NThreading::TFuture<TEvWriteResult> WriteToDDisk(
         const THostConnection& connection,
