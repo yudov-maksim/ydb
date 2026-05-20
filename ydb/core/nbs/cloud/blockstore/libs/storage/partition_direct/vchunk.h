@@ -80,12 +80,18 @@ private:
         TBlockRange64 range,
         const TBaseWriteRequestExecutor::TResponse& response,
         std::shared_ptr<NWilson::TSpan> span);
+    void OnWriteBlocksNotify(
+        TBlockRange64 range,
+        THostMask completedWrites,
+        ui64 lsn);
 
     void DoFlush();
     void OnFlushResponse(const TFlushRequestExecutor::TResponse& response);
 
-    void DoErase();
-    void OnEraseResponse(const TEraseRequestExecutor::TResponse& response);
+    void DoErase(TBlocksDirtyMap::EEraseType eraseType);
+    void OnEraseResponse(
+        const TEraseRequestExecutor::TResponse& response,
+        TBlocksDirtyMap::EEraseType eraseType);
 
     void UpdatePendingCounters();
 

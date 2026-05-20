@@ -38,7 +38,7 @@ TBaseWriteRequestExecutor::TBaseWriteRequestExecutor(
 
 TBaseWriteRequestExecutor::~TBaseWriteRequestExecutor()
 {
-    if (!CallbackCalled) {
+    if (!IsReplied) {
         LOG_ERROR(
             *ActorSystem,
             NKikimrServices::NBS_PARTITION,
@@ -50,14 +50,19 @@ TBaseWriteRequestExecutor::~TBaseWriteRequestExecutor()
     }
 }
 
-void TBaseWriteRequestExecutor::SetCallback(TCallback callback)
+void TBaseWriteRequestExecutor::SetReplyCallback(TReplyCallback callback)
 {
-    Callback = std::move(callback);
+    ReplyCallback = std::move(callback);
 }
 
-bool TBaseWriteRequestExecutor::IsCallbackCalled() const
+void TBaseWriteRequestExecutor::SetNotifyCallback(TNotifyCallback callback)
 {
-    return CallbackCalled;
+    NotifyCallback = std::move(callback);
+}
+
+bool TBaseWriteRequestExecutor::IsAlreadyReplied() const
+{
+    return IsReplied;
 }
 
 void TBaseWriteRequestExecutor::LogOnReply(const NProto::TError& error) const
@@ -80,26 +85,53 @@ void TBaseWriteRequestExecutor::LogOnReply(const NProto::TError& error) const
     }
 }
 
-void TBaseWriteRequestExecutor::Reply(NProto::TError error)
+void TBaseWriteRequestExecutor::ReplyOrNotify(
+    NProto::TError error,
+    THostMask completedOnCurrentResponse)
 {
-    if (CallbackCalled) {
+    if (!IsReplied) {
+        Reply(std::move(error));
         return;
     }
-    CallbackCalled = true;
+    Notify(completedOnCurrentResponse);
+}
+
+void TBaseWriteRequestExecutor::Reply(NProto::TError error)
+{
     LogOnReply(error);
     Y_ABORT_UNLESS(
-        Callback,
+        ReplyCallback,
         "TBaseWriteRequestExecutor::Reply called without callback set");
-    Callback(TResponse{
+    Y_ABORT_IF(IsReplied, "TBaseWriteRequestExecutor::Reply called twice");
+
+    ReplyCallback(TResponse{
         .Error = std::move(error),
         .Lsn = Lsn,
         .RequestedWrites = RequestedWrites,
         .CompletedWrites = CompletedWrites});
+
+    IsReplied = true;
+}
+
+void TBaseWriteRequestExecutor::Notify(THostMask completedOnCurrentResponse)
+{
+    Y_ABORT_UNLESS(
+        ReplyCallback,
+        "TBaseWriteRequestExecutor::Notify called without callback set");
+
+    LOG_DEBUG(
+        *ActorSystem,
+        NKikimrServices::NBS_PARTITION,
+        "TBaseWriteRequestExecutor::Notify %s, %s",
+        Request->Headers.VolumeConfig->DiskId.Quote().c_str(),
+        Request->Headers.Range.Print().c_str());
+
+    NotifyCallback(completedOnCurrentResponse, Lsn);
 }
 
 void TBaseWriteRequestExecutor::SendWriteRequest(THostIndex host)
 {
-    if (CallbackCalled) {
+    if (IsReplied) {
         return;
     }
 
@@ -131,14 +163,14 @@ void TBaseWriteRequestExecutor::OnWriteResponse(
     const TDBGWriteBlocksResponse& response,
     std::shared_ptr<NWilson::TSpan> span)
 {
-    if (CallbackCalled) {
+    if (IsReplied) {
         return;
     }
 
     if (!HasError(response.Error)) {
         CompletedWrites.Set(host);
         if (ShouldReplyOk()) {
-            Reply(MakeError(S_OK));
+            ReplyOrNotify(MakeError(S_OK), THostMask::MakeOne(host));
         }
         return;
     }
@@ -160,7 +192,7 @@ void TBaseWriteRequestExecutor::OnWriteResponse(
             "TBaseWriteRequestExecutor. All hand-offs attempts are over. %s",
             FormatError(response.Error).c_str());
 
-        Reply(response.Error);
+        ReplyOrNotify(response.Error, {});
 
         auto ender = TEndSpanWithError(std::move(span), response.Error);
     }
@@ -191,7 +223,7 @@ void TBaseWriteRequestExecutor::RequestTimeoutCallback()
         Request->Headers.VolumeConfig->DiskId.Quote().c_str(),
         Request->Headers.Range.Print().c_str());
 
-    Reply(MakeError(E_TIMEOUT, "Write request timeout"));
+    ReplyOrNotify(MakeError(E_TIMEOUT, "Write request timeout"), {});
 }
 
 bool TBaseWriteRequestExecutor::ShouldReplyOk() const

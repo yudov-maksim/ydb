@@ -64,6 +64,11 @@ public:
 
     bool operator==(const THostMask& other) const = default;
 
+    bool operator<(const THostMask& other) const
+    {
+        return Bits < other.Bits;
+    }
+
     [[nodiscard]] TString Print() const;
 
 private:

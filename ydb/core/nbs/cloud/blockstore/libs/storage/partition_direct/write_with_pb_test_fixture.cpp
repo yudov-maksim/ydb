@@ -152,8 +152,9 @@ TWriteWithPbTestFixture::CreateRequest(TRequestHeaders headers)
         std::move(originalRequest),
         UserLsn,
         NWilson::TTraceId());
-    request->SetCallback([this](TBaseWriteRequestExecutor::TResponse response)
-                         { CallbackResult = std::move(response); });
+    request->SetReplyCallback(
+        [this](TBaseWriteRequestExecutor::TResponse response)
+        { CallbackResult = std::move(response); });
     return request;
 }
 

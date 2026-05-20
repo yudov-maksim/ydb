@@ -8,6 +8,7 @@
 #include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/dirty_map/dirty_map.h>
 #include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/model/public.h>
 #include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/model/vchunk_config.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/storage/storage_transport/storage_transport.h>
 
 #include <ydb/core/nbs/cloud/storage/core/libs/common/error.h>
 #include <ydb/core/nbs/cloud/storage/core/libs/common/guarded_sglist.h>
@@ -169,8 +170,11 @@ public:
     // Callback type for WriteBlocksToManyPBuffers: called once per response
     // received from the transport layer. May be called more than once for the
     // same request (e.g. when a second response arrives after the first one).
+    // Returns EWriteStatus::FINISHED when the caller no longer needs further
+    // responses. Returns EWriteStatus::IN_PROGRESS to keep receiving them.
     using TWriteBlocksToManyPBuffersCallback =
-        std::function<void(TDBGWriteBlocksToManyPBuffersResponse)>;
+        std::function<NTransport::EWriteStatus(
+            TDBGWriteBlocksToManyPBuffersResponse)>;
 
     virtual void WriteBlocksToManyPBuffers(
         ui32 vChunkIndex,

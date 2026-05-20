@@ -91,6 +91,7 @@ TICStorageTransportActor::~TICStorageTransportActor()
             DestroyErrorMessage,
             request->PersistentBufferIds);
         if (request->Callback) {
+            // Ignore the return value on destruction.
             request->Callback(std::move(response->Record));
         }
     }
@@ -324,12 +325,13 @@ void TICStorageTransportActor::HandleWriteToManyPersistentBuffersResult(
     if (auto* r = WriteToManyPBuffersRequests.FindPtr(requestId)) {
         auto& request = **r;
         if (request.Callback) {
-            request.Callback(ev->Get()->Record);
+            const EWriteStatus status = request.Callback(ev->Get()->Record);
+            if (status == EWriteStatus::FINISHED) {
+                WriteToManyPBuffersRequests.erase(requestId);
+            }
+            // If status is IN_PROGRESS, do NOT erase from map: the callback
+            // may be called again when the next response arrives.
         }
-        // Do NOT erase from map here: the callback may be called multiple
-        // times (e.g. a second response arrives after the first one).
-        // The entry is removed only when the request is fully done (i.e.
-        // when the upper layer no longer needs further responses).
     } else {
         LOG_ERROR(
             ctx,

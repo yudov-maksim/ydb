@@ -262,6 +262,16 @@ void TInflightInfo::UnlockPBuffer()
     }
 }
 
+THostMask TInflightInfo::GetWriteConfirmed() const
+{
+    return WriteConfirmed;
+}
+
+THostMask TInflightInfo::GetWriteRequested() const
+{
+    return WriteRequested;
+}
+
 TString TInflightInfo::DebugPrint(TInstant now) const
 {
     TStringBuilder result;

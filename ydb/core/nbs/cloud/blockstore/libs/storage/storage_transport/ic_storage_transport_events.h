@@ -1,5 +1,7 @@
 #pragma once
 
+#include "storage_transport.h"
+
 #include <ydb/core/nbs/cloud/blockstore/libs/kikimr/events.h>
 
 #include <ydb/core/nbs/cloud/storage/core/libs/common/disable_copy.h>
@@ -263,7 +265,7 @@ struct TEvTransportPrivate
     struct TWriteToManyPBuffers: TDisableCopyMove
     {
         using TResult = TProtoEvWriteToManyPersistentBuffersResult;
-        using TCallback = std::function<void(TResult)>;
+        using TCallback = std::function<EWriteStatus(TResult)>;
 
         const NActors::TActorId ServiceId;
         const NKikimr::NDDisk::TQueryCredentials Credentials;

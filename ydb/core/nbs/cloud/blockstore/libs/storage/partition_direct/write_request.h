@@ -33,7 +33,8 @@ public:
         THostMask CompletedWrites;
     };
 
-    using TCallback = std::function<void(TResponse)>;
+    using TReplyCallback = std::function<void(TResponse)>;
+    using TNotifyCallback = std::function<void(THostMask, ui64)>;
 
     TBaseWriteRequestExecutor(
         NActors::TActorSystem* actorSystem,
@@ -47,15 +48,20 @@ public:
 
     virtual ~TBaseWriteRequestExecutor();
 
-    void SetCallback(TCallback callback);
+    void SetReplyCallback(TReplyCallback callback);
+    void SetNotifyCallback(TNotifyCallback callback);
 
-    [[nodiscard]] bool IsCallbackCalled() const;
+    [[nodiscard]] bool IsAlreadyReplied() const;
 
     virtual void Run() = 0;
 
 protected:
     void LogOnReply(const NProto::TError& error) const;
+    void ReplyOrNotify(
+        NProto::TError error,
+        THostMask completedOnCurrentResponse);
     void Reply(NProto::TError error);
+    void Notify(THostMask completedOnCurrentResponse);
 
     void SendWriteRequest(THostIndex host);
 
@@ -87,8 +93,9 @@ protected:
     THostMask CompletedWrites;
 
 private:
-    TCallback Callback;
-    bool CallbackCalled = false;
+    TReplyCallback ReplyCallback;
+    TNotifyCallback NotifyCallback;
+    bool IsReplied = false;
 };
 
 using TBaseWriteRequestExecutorPtr = std::shared_ptr<TBaseWriteRequestExecutor>;

@@ -114,7 +114,7 @@ Y_UNIT_TEST_SUITE(TWriteRequestTest)
                 std::move(originalRequest),
                 userLsn,
                 NWilson::TTraceId());
-        writeRequest->SetCallback(
+        writeRequest->SetReplyCallback(
             [&](TBaseWriteRequestExecutor::TResponse response)
             { callbackResult = std::move(response); });
         writeRequest->Run();
@@ -194,7 +194,7 @@ Y_UNIT_TEST_SUITE(TWriteRequestTest)
                 std::move(originalRequest),
                 userLsn,
                 NWilson::TTraceId());
-        writeRequest->SetCallback(
+        writeRequest->SetReplyCallback(
             [&](TBaseWriteRequestExecutor::TResponse response)
             { callbackResult = std::move(response); });
         writeRequest->Run();
@@ -279,7 +279,7 @@ Y_UNIT_TEST_SUITE(TWriteRequestTest)
                 std::move(originalRequest),
                 userLsn,
                 NWilson::TTraceId());
-        writeRequest->SetCallback(
+        writeRequest->SetReplyCallback(
             [&](TBaseWriteRequestExecutor::TResponse response)
             { callbackResult = std::move(response); });
         writeRequest->Run();
@@ -376,7 +376,7 @@ Y_UNIT_TEST_SUITE(TWriteRequestTest)
                 std::move(originalRequest),
                 userLsn,
                 NWilson::TTraceId());
-        writeRequest->SetCallback(
+        writeRequest->SetReplyCallback(
             [&](TBaseWriteRequestExecutor::TResponse response)
             { callbackResult = std::move(response); });
         writeRequest->Run();

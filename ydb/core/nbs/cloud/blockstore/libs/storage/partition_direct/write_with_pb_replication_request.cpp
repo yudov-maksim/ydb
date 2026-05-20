@@ -84,16 +84,14 @@ void TWriteWithPbReplicationRequestExecutor::Run()
     ScheduleRequestTimeoutCallback();
     ScheduleHedging();
 
-    SendWriteRequestToManyPBuffers(
-        VChunkConfig.PBufferHosts.GetPrimary().Hosts());
+    ManyPBuffersResponsesWaitingMask = VChunkConfig.PBufferHosts.GetPrimary();
+    SendWriteRequestToManyPBuffers(ManyPBuffersResponsesWaitingMask.Hosts());
 }
 
 void TWriteWithPbReplicationRequestExecutor::SendWriteRequestToManyPBuffers(
     TVector<THostIndex> hosts)
 {
-    if (IsCallbackCalled()) {
-        return;
-    }
+    Y_ABORT_IF(IsAlreadyReplied());
 
     LOG_DEBUG(
         *ActorSystem,
@@ -127,10 +125,11 @@ void TWriteWithPbReplicationRequestExecutor::SendWriteRequestToManyPBuffers(
              std::static_pointer_cast<TWriteWithPbReplicationRequestExecutor>(
                  shared_from_this())](
             TDBGWriteBlocksToManyPBuffersResponse response)
-        { self->OnWriteToManyPBuffersResponse(response); });
+        { return self->OnWriteToManyPBuffersResponse(response); });
 }
 
-void TWriteWithPbReplicationRequestExecutor::OnWriteToManyPBuffersResponse(
+NTransport::EWriteStatus
+TWriteWithPbReplicationRequestExecutor::OnWriteToManyPBuffersResponse(
     const TDBGWriteBlocksToManyPBuffersResponse& response)
 {
     if (HasError(response.OverallError)) {
@@ -142,12 +141,14 @@ void TWriteWithPbReplicationRequestExecutor::OnWriteToManyPBuffersResponse(
             Request->Headers.VolumeConfig->DiskId.Quote().c_str(),
             Request->Headers.Range.Print().c_str());
         TryToSendDirectWrites(false);
-        return;
+        return NTransport::EWriteStatus::FINISHED;
     }
 
+    THostMask completedWritesOfCurrentResponse;
     for (const auto& pbufferResponse: response.Responses) {
         const auto host = pbufferResponse.HostIndex;
         AvailableHostsForDirectSending.Reset(host);
+        ManyPBuffersResponsesWaitingMask.Reset(host);
         if (!HasError(pbufferResponse.Error)) {
             LOG_INFO(
                 *ActorSystem,
@@ -156,7 +157,8 @@ void TWriteWithPbReplicationRequestExecutor::OnWriteToManyPBuffersResponse(
                 host,
                 Request->Headers.VolumeConfig->DiskId.Quote().c_str(),
                 Request->Headers.Range.Print().c_str());
-            CompletedWrites.Set(host);
+
+            completedWritesOfCurrentResponse.Set(host);
         } else {
             LOG_WARN(
                 *ActorSystem,
@@ -170,12 +172,18 @@ void TWriteWithPbReplicationRequestExecutor::OnWriteToManyPBuffersResponse(
         }
     }
 
+    CompletedWrites = CompletedWrites.Include(completedWritesOfCurrentResponse);
+    auto result = ManyPBuffersResponsesWaitingMask.Empty()
+                      ? NTransport::EWriteStatus::FINISHED
+                      : NTransport::EWriteStatus::IN_PROGRESS;
+
     if (ShouldReplyOk()) {
-        Reply(MakeError(S_OK));
-        return;
+        ReplyOrNotify(MakeError(S_OK), completedWritesOfCurrentResponse);
+        return result;
     }
 
     TryToSendDirectWrites(false);
+    return result;
 }
 
 void TWriteWithPbReplicationRequestExecutor::TryToSendDirectWrites(bool isHedge)
@@ -213,7 +221,7 @@ void TWriteWithPbReplicationRequestExecutor::TryToSendDirectWrites(bool isHedge)
             Request->Headers.VolumeConfig->DiskId.Quote().c_str(),
             Request->Headers.Range.Print().c_str());
 
-        Reply(resultError);
+        ReplyOrNotify(resultError, {});
         return;
     }
 
@@ -253,17 +261,17 @@ void TWriteWithPbReplicationRequestExecutor::OnWriteResponse(
         Request->Headers.Range.Print().c_str());
 
     --ActiveDirectWritesNumber;
-    if (IsCallbackCalled()) {
-        return;
-    }
 
     if (!HasError(response.Error)) {
         CompletedWrites.Set(host);
         if (ShouldReplyOk()) {
-            Reply(MakeError(S_OK));
+            ReplyOrNotify(MakeError(S_OK), THostMask::MakeOne(host));
         }
         return;
     }
+    // There is no necessity of vchunk's notifying in case of error.
+    // Notifying has sense only for CompletedWrites.
+    // RequestedWrites will be registered in any case.
 
     LOG_WARN(
         *ActorSystem,
@@ -297,7 +305,7 @@ void TWriteWithPbReplicationRequestExecutor::ScheduleHedging()
             if (auto self = std::static_pointer_cast<
                     TWriteWithPbReplicationRequestExecutor>(weakSelf.lock()))
             {
-                if (!self->IsCallbackCalled()) {
+                if (!self->IsAlreadyReplied()) {
                     self->TryToSendDirectWrites(true);
                 }
             }

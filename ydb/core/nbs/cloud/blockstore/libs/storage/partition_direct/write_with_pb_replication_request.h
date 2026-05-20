@@ -37,11 +37,12 @@ private:
     // of any write request - f.e. secondary hosts from ManyPBuffers request.
     // It excludes hosts for which responses have been received.
     THostMask AvailableHostsForDirectSending;
+    THostMask ManyPBuffersResponsesWaitingMask;
     size_t ActiveDirectWritesNumber{};
     const TDuration PbufferReplyTimeout;
 
     void SendWriteRequestToManyPBuffers(TVector<THostIndex> hosts);
-    void OnWriteToManyPBuffersResponse(
+    NTransport::EWriteStatus OnWriteToManyPBuffersResponse(
         const TDBGWriteBlocksToManyPBuffersResponse& response);
     void TryToSendDirectWrites(bool isHedge);
     void OnWriteResponse(
