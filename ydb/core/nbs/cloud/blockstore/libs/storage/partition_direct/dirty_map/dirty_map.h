@@ -280,6 +280,9 @@ public:
         EPBufferCounter counter,
         size_t byteCount) override;
 
+    [[nodiscard]] bool NeedFlush() const;
+    [[nodiscard]] bool NeedErase() const;
+
     // Debug purposes
     [[nodiscard]] TString DebugPrintPBuffers();
     [[nodiscard]] TString DebugPrintPBuffersUsage() const;

@@ -2,7 +2,7 @@
 
 #include <ydb/core/nbs/cloud/blockstore/libs/common/block_range_algorithms.h>
 #include <ydb/core/nbs/cloud/blockstore/libs/common/constants.h>
-#include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/model/host_status.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/model/host_roles.h>
 #include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/model/vchunk_config.h>
 
 #include <library/cpp/containers/stack_vector/stack_vec.h>
@@ -107,9 +107,7 @@ TString TFlushHints::DebugPrint() const
 {
     TStringBuilder builder;
     for (const auto& [route, hint]: Hints) {
-        builder << "H" << ui32(route.SourceHostIndex) << "->H"
-                << ui32(route.DestinationHostIndex) << ":" << hint.DebugPrint()
-                << ";";
+        builder << route.DebugPrint() << ":" << hint.DebugPrint() << ";";
     }
     return builder;
 }
@@ -154,7 +152,7 @@ TString TEraseHints::DebugPrint() const
 {
     TStringBuilder builder;
     for (const auto& [host, hint]: Hints) {
-        builder << "H" << ui32(host) << ":" << hint.DebugPrint() << ";";
+        builder << PrintHostIndex(host) << ":" << hint.DebugPrint() << ";";
     }
     return builder;
 }
@@ -440,19 +438,25 @@ TEraseHints TBlocksDirtyMap::MakeEraseHint(size_t batchSize)
     for (ui64 lsn: readyToErase) {
         auto item = Inflight.GetValue(lsn);
         Y_ABORT_UNLESS(item);
+
         auto& val = item->Value;
 
-        const auto desired = val.GetWriteRequested();
-        val.SetEraseDesired(desired);
-
-        for (THostIndex host: desired) {
+        for (THostIndex host: val.GetWriteRequested()) {
+            bool rangeRemoved = false;
             if (val.RequestErase(host)) {
                 if (DisabledHosts.Get(host)) {
-                    (void)val.ConfirmErase(host);
+                    // We can't handle this situation properly. Barrier cleanup
+                    // will help us.
+                    if (val.ConfirmErase(host)) {
+                        const bool removed = Inflight.RemoveRange(item->Key);
+                        Y_ABORT_UNLESS(removed);
+                        rangeRemoved = true;
+                    }
                 } else {
                     result.AddHint(host, item->Key, item->Range);
                 }
             }
+            Y_ABORT_IF(rangeRemoved && !result.Empty());
         }
     }
 
@@ -756,6 +760,16 @@ void TBlocksDirtyMap::DataFromPBufferReleased(
             break;
         }
     }
+}
+
+bool TBlocksDirtyMap::NeedFlush() const
+{
+    return !ReadyToFlush.empty();
+}
+
+bool TBlocksDirtyMap::NeedErase() const
+{
+    return !ReadyToErase.empty();
 }
 
 TString TBlocksDirtyMap::DebugPrintPBuffers()

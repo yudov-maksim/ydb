@@ -35,8 +35,8 @@ TString DoDump(
 {
     TStringBuilder sb;
     for (size_t i = 0; i < states.size(); ++i) {
-        sb << states[i].DebugPrint() << " " << statistics[i].DebugPrint()
-           << "\n";
+        sb << " H" << i << ": " << states[i].DebugPrint() << " "
+           << statistics[i].DebugPrint() << "\n";
     }
     return sb;
 }
@@ -951,9 +951,7 @@ NThreading::TFuture<TDBGDumpResponse> TDirectBlockGroup::Dump()
     return future;
 }
 
-void TDirectBlockGroup::SetHostState(
-    THostIndex hostIndex,
-    THostState::EState state)
+void TDirectBlockGroup::SetHostState(THostIndex hostIndex, EHostState state)
 {
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
 
@@ -966,6 +964,11 @@ void TDirectBlockGroup::SetHostState(
         ToString(state).c_str());
 
     HostStates[hostIndex].State = state;
+    for (const auto& weakVChunk: VChunks) {
+        if (auto vChunk = weakVChunk.lock()) {
+            vChunk->SetHostState(hostIndex, state);
+        }
+    }
 }
 
 ui64 TDirectBlockGroup::GetHostPBufferUsedSize(THostIndex hostIndex) const
@@ -974,8 +977,6 @@ ui64 TDirectBlockGroup::GetHostPBufferUsedSize(THostIndex hostIndex) const
     for (const auto& weakVChunk: VChunks) {
         if (auto vChunk = weakVChunk.lock()) {
             result += vChunk->GetPBufferUsedSize(hostIndex);
-        } else {
-            return 0;
         }
     }
     return result;
@@ -1169,6 +1170,15 @@ void TDirectBlockGroup::OnMultiFlushResponse(
     }
 }
 
+void TDirectBlockGroup::Thinking()
+{
+    for (THostIndex hostIndex = 0; hostIndex < HostStates.size(); ++hostIndex) {
+        HostStates[hostIndex].PBufferUsedSize =
+            GetHostPBufferUsedSize(hostIndex);
+    }
+    Oracle.Think(TInstant::Now());
+}
+
 void TDirectBlockGroup::ScheduleOracleThinking()
 {
     const auto delay = TDuration::MilliSeconds(
@@ -1179,7 +1189,7 @@ void TDirectBlockGroup::ScheduleOracleThinking()
         [weakSelf = weak_from_this()]()
         {
             if (auto self = weakSelf.lock()) {
-                self->Oracle.Think(TInstant::Now());
+                self->Thinking();
                 self->ScheduleOracleThinking();
             }
         });

@@ -153,15 +153,7 @@ public:
     // Removes the lock that prohibits erasing the PBuffer.
     void UnlockPBuffer();
 
-    [[nodiscard]] THostMask GetWriteConfirmed() const;
     [[nodiscard]] THostMask GetWriteRequested() const;
-
-    // Фиксирует целевое множество хостов для erase.
-    // Монотонно расширяется. Вызывается извне в момент готовности к erase.
-    void SetEraseDesired(THostMask mask);
-    [[nodiscard]] THostMask GetEraseDesired() const;
-    [[nodiscard]] THostMask GetEraseRequested() const;
-    [[nodiscard]] THostMask GetEraseConfirmed() const;
 
     TString DebugPrint(TInstant now) const;
 
@@ -189,7 +181,6 @@ private:
     THostMask FlushDesired;
     THostMask FlushRequested;
     THostMask FlushConfirmed;
-    THostMask EraseDesired;
     THostMask EraseRequested;
     THostMask EraseConfirmed;
 };

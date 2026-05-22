@@ -145,6 +145,7 @@ TWriteWithPbTestFixture::CreateRequest(TRequestHeaders headers)
     CallbackResult.reset();
     auto request = std::make_shared<TWriteWithPbReplicationRequestExecutor>(
         Runtime->GetActorSystem(0),
+        LogTitle.GetChild(GetCycleCount()),
         VChunkConfig,
         DirectBlockGroup,
         Range,
