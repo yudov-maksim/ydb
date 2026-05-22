@@ -452,13 +452,14 @@ void TVChunk::OnWriteBlocksNotify(
     THostMask completedWrites,
     ui64 lsn)
 {
-    //return;
+    return;   // TODO сейчас работает норм. Хз, долго ли, но не сразу падает
+              // точно
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
 
     LOG_DEBUG(
         *ActorSystem,
         NKikimrServices::NBS_PARTITION,
-        "ReadBlocksLocal. Range %s",
+        "OnWriteBlocksNotify. Range %s",
         range.Print().c_str());
     BlocksDirtyMap.UpdateAdditionalEraseQueue(completedWrites, lsn, range);
 
@@ -550,7 +551,14 @@ void TVChunk::DoErase(TBlocksDirtyMap::EEraseType eraseType)
             {
                 // Executor thread
                 if (auto self = weakSelf.lock()) {
-                    self->OnEraseResponse(f.GetValue(), eraseType);
+                    switch (eraseType) {
+                        case TBlocksDirtyMap::EEraseType::USUAL:
+                            self->OnEraseResponse(f.GetValue());
+                            break;
+                        case TBlocksDirtyMap::EEraseType::HANGING:
+                            self->OnEraseHangingResponse(f.GetValue());
+                            break;
+                    };
                 }
             });
 
@@ -558,32 +566,35 @@ void TVChunk::DoErase(TBlocksDirtyMap::EEraseType eraseType)
     }
 }
 
-void TVChunk::OnEraseResponse(
-    const TEraseRequestExecutor::TResponse& response,
-    TBlocksDirtyMap::EEraseType eraseType)
+void TVChunk::OnEraseResponse(const TEraseRequestExecutor::TResponse& response)
 {
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
 
-    switch (eraseType) {
-        case TBlocksDirtyMap::EEraseType::USUAL:
-            BlocksDirtyMap.EraseFinished(
-                response.Host,
-                response.EraseOk,
-                response.EraseFailed);
-            break;
-        case TBlocksDirtyMap::EEraseType::HANGING:
-            // There is no necessity of hanging queue's clearing because of
-            // elements are removed already. Also there is no necessity of
-            // returning failed lsn to hanging queue because of barrier
-            // clearing.
-            break;
-    };
+    BlocksDirtyMap.EraseFinished(
+        response.Host,
+        response.EraseOk,
+        response.EraseFailed);
 
     for (size_t i = 0; i < response.EraseOk.size(); ++i) {
         Counters.RequestFinished(EVChunkOperation::Erase, true);
     }
     for (size_t i = 0; i < response.EraseFailed.size(); ++i) {
         Counters.RequestFinished(EVChunkOperation::Erase, false);
+    }
+
+    UpdatePendingCounters();
+}
+
+void TVChunk::OnEraseHangingResponse(
+    const TEraseRequestExecutor::TResponse& response)
+{
+    Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
+
+    for (size_t i = 0; i < response.EraseOk.size(); ++i) {
+        Counters.RequestFinished(EVChunkOperation::EraseHanging, true);
+    }
+    for (size_t i = 0; i < response.EraseFailed.size(); ++i) {
+        Counters.RequestFinished(EVChunkOperation::EraseHanging, false);
     }
 
     UpdatePendingCounters();
@@ -599,6 +610,9 @@ void TVChunk::UpdatePendingCounters()
     Counters.UpdatePending(
         EVChunkOperation::Erase,
         BlocksDirtyMap.GetErasePendingCount());
+    Counters.UpdatePending(
+        EVChunkOperation::EraseHanging,
+        BlocksDirtyMap.GetEraseHangingCount());
     Counters.UpdateMinLsn(
         EVChunkOperation::Flush,
         BlocksDirtyMap.GetMinFlushPendingLsn());

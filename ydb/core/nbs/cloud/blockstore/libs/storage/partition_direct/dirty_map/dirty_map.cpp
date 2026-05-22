@@ -440,12 +440,18 @@ TEraseHints TBlocksDirtyMap::MakeEraseHint(size_t batchSize)
     for (ui64 lsn: readyToErase) {
         auto item = Inflight.GetValue(lsn);
         Y_ABORT_UNLESS(item);
-
         auto& val = item->Value;
 
-        for (THostIndex host: DesiredPBuffers) {
+        const auto desired = val.GetWriteRequested();
+        val.SetEraseDesired(desired);
+
+        for (THostIndex host: desired) {
             if (val.RequestErase(host)) {
-                result.AddHint(host, item->Key, item->Range);
+                if (DisabledHosts.Get(host)) {
+                    (void)val.ConfirmErase(host);
+                } else {
+                    result.AddHint(host, item->Key, item->Range);
+                }
             }
         }
     }

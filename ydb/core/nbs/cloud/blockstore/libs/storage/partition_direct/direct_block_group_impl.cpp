@@ -506,12 +506,16 @@ void TDirectBlockGroup::WriteBlocksToManyPBuffers(
 
     TVector<NKikimrBlobStorage::NDDisk::TDDiskId> disksIds;
     disksIds.reserve(hostIndexes.size());
+    std::shared_ptr<TSet<NKikimrBlobStorage::NDDisk::TDDiskId, TDDiskIdLess>>
+        waitingReplies = std::make_shared<
+            TSet<NKikimrBlobStorage::NDDisk::TDDiskId, TDDiskIdLess>>();
     for (auto hostIndex: hostIndexes) {
         const auto& ddiskId =
             PBufferConnections[hostIndex].HostConnection.DDiskId;
 
         disksIds.push_back({});
         ddiskId.Serialize(&disksIds.back());
+        waitingReplies->emplace(disksIds.back());
     }
 
     if (!Initialized) {
@@ -544,19 +548,31 @@ void TDirectBlockGroup::WriteBlocksToManyPBuffers(
          executor = Executor,
          threadChecker = ExecutorThreadChecker.CreateDelegate(),
          callback = std::move(callback),
+         waitingReplies,
          weakSelf = weak_from_this()](
             NTransport::IStorageTransport::TEvWriteToManyPersistentBuffersResult
                 result) mutable
         {
             // ActorSystem thread
 
-            auto statusFuture = executor->Execute(
+            for (const auto& singlePBufferResponse: result.GetResult()) {
+                auto it = waitingReplies->find(
+                    singlePBufferResponse.GetPersistentBufferId());
+                if (it != waitingReplies->end()) {
+                    waitingReplies->erase(it);
+                }
+            }
+            NTransport::EWriteStatus status =
+                waitingReplies->empty() ? NTransport::EWriteStatus::FINISHED
+                                        : NTransport::EWriteStatus::IN_PROGRESS;
+
+            executor->ExecuteSimple(
                 [childSpan = std::move(childSpan),
                  startAt,
                  coordinatorHostIndex,
                  threadChecker,
                  result = std::move(result),
-                 callback = std::move(callback),
+                 callback,
                  weakSelf =
                      std::move(weakSelf)]() mutable -> NTransport::EWriteStatus
                 {
@@ -574,7 +590,7 @@ void TDirectBlockGroup::WriteBlocksToManyPBuffers(
                             "WriteBlocksToManyPBuffersResponse: DBG is "
                             "destroyed already."));
                 });
-            return statusFuture.GetValueSync();
+            return status;
         });
 }
 

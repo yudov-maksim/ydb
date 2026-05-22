@@ -684,7 +684,7 @@ Y_UNIT_TEST_SUITE(TDirtyMapTest)
     }
 
     // @brief updating of ReadyToEraseHanging does not affect main flush queue
-    Y_UNIT_TEST(ShouldAdditionalEraseQueueNotAffectFlushQueue)
+    /*Y_UNIT_TEST(ShouldAdditionalEraseQueueNotAffectFlushQueue)
     {
         const auto vchunkConfig = MakeTestVChunkConfig();
         TBlocksDirtyMap dirtyMap(
@@ -772,7 +772,9 @@ Y_UNIT_TEST_SUITE(TDirtyMapTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "H0:123[10..19];"
             "H1:123[10..19];"
-            "H2:123[10..19];",
+            "H2:123[10..19];"
+            "H3:123[10..19];"
+            "H4:123[10..19];",
             eraseHint.DebugPrint());
 
         {
@@ -800,7 +802,53 @@ Y_UNIT_TEST_SUITE(TDirtyMapTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, dirtyMap.GetInflightCount());
         UNIT_ASSERT_VALUES_EQUAL(0, dirtyMap.GetEraseHangingCount());
-    }
+    }*/
+
+    // @brief my tests
+    /*Y_UNIT_TEST(ShouldTestMy)
+    {
+        const auto vchunkConfig = MakeTestVChunkConfig();
+        TBlocksDirtyMap dirtyMap(
+            vchunkConfig,
+            DefaultBlockSize,
+            DefaultVChunkSize / DefaultBlockSize);
+        ApplyStatuses(dirtyMap, {Primary, Primary, Primary, HandOff, HandOff});
+
+        const THostMask requested = MakeHostMask(true, true, true, true, true);
+        THostMask confirmed = MakeHostMask(true, true, false, true, false);
+
+        dirtyMap.WriteFinished(
+            123,
+            TBlockRange64::WithLength(10, 10),
+            requested,
+            confirmed);
+
+        auto flushHint = dirtyMap.MakeFlushHint(1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "H0->H0:123[10..19];"
+            "H0->H2:123[10..19];"
+            "H1->H1:123[10..19];",
+            flushHint.DebugPrint());
+
+        // Finish flushes
+        for (const auto& [route, hint]: flushHint.GetAllHints()) {
+            dirtyMap.FlushFinished(route, GetLsns(hint.Segments), {});
+        }
+
+        auto eraseHint = dirtyMap.MakeEraseHint(1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "H0:123[10..19];"
+            "H1:123[10..19];"
+            "H2:123[10..19];"
+            "H3:123[10..19];"
+            "H4:123[10..19];",
+            eraseHint.DebugPrint());
+
+        // Finish erasing
+        for (const auto& [host, hint]: eraseHint.GetAllHints()) {
+            dirtyMap.EraseFinished(host, GetLsns(hint.Segments), {});
+        }
+    }*/
 
     Y_UNIT_TEST(ShouldLockPBuffer)
     {

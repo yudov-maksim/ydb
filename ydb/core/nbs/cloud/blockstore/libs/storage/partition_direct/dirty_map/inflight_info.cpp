@@ -24,6 +24,7 @@ TInflightInfo::TInflightInfo(
 {
     WriteRequested.Set(host);
     WriteConfirmed.Set(host);
+    EraseDesired = WriteRequested;
     ReadyQueue->Register(Lsn, IReadyQueue::EQueueType::Clone);
     ApplyBytes(host, IReadyQueue::EPBufferCounter::Total, true);
 }
@@ -41,6 +42,7 @@ TInflightInfo::TInflightInfo(
     , StartAt(TInstant::Now())
     , WriteRequested(writeRequested)
     , WriteConfirmed(writeConfirmed)
+    , EraseDesired(WriteRequested)
 {
     Y_ABORT_UNLESS(WriteConfirmed.Count() >= QuorumDirectBlockGroupHostCount);
 
@@ -58,6 +60,9 @@ TInflightInfo::TInflightInfo(TInflightInfo&& other) noexcept
     , WriteConfirmed(other.WriteConfirmed)
     , FlushRequested(other.FlushRequested)
     , FlushConfirmed(other.FlushConfirmed)
+    , EraseDesired(other.EraseDesired)
+    , EraseRequested(other.EraseRequested)
+    , EraseConfirmed(other.EraseConfirmed)
 {
     other.ReadyQueue = nullptr;
 }
@@ -196,8 +201,9 @@ bool TInflightInfo::RequestErase(THostIndex host)
     Y_ABORT_UNLESS(
         State == EState::PBufferFlushed || State == EState::PBufferErasing);
     Y_ABORT_UNLESS(FlushConfirmed.Count() >= QuorumDirectBlockGroupHostCount);
+    Y_ABORT_UNLESS(EraseDesired.Get(host));
 
-    if (WriteRequested.Get(host) && !EraseRequested.Get(host)) {
+    if (!EraseRequested.Get(host)) {
         State = EState::PBufferErasing;
         EraseRequested.Set(host);
         return true;
@@ -212,7 +218,7 @@ bool TInflightInfo::ConfirmErase(THostIndex host)
     Y_ABORT_UNLESS(!EraseConfirmed.Get(host));
 
     EraseConfirmed.Set(host);
-    if (EraseConfirmed == EraseRequested) {
+    if (EraseConfirmed == EraseDesired) {
         State = EState::PBufferErased;
     }
 
@@ -270,6 +276,28 @@ THostMask TInflightInfo::GetWriteConfirmed() const
 THostMask TInflightInfo::GetWriteRequested() const
 {
     return WriteRequested;
+}
+
+void TInflightInfo::SetEraseDesired(THostMask mask)
+{
+    Y_ABORT_UNLESS(
+        State == EState::PBufferFlushed || State == EState::PBufferErasing);
+    EraseDesired = EraseDesired.Include(mask);
+}
+
+THostMask TInflightInfo::GetEraseDesired() const
+{
+    return EraseDesired;
+}
+
+THostMask TInflightInfo::GetEraseRequested() const
+{
+    return EraseRequested;
+}
+
+THostMask TInflightInfo::GetEraseConfirmed() const
+{
+    return EraseConfirmed;
 }
 
 TString TInflightInfo::DebugPrint(TInstant now) const

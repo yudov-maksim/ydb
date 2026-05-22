@@ -89,9 +89,9 @@ private:
     void OnFlushResponse(const TFlushRequestExecutor::TResponse& response);
 
     void DoErase(TBlocksDirtyMap::EEraseType eraseType);
-    void OnEraseResponse(
-        const TEraseRequestExecutor::TResponse& response,
-        TBlocksDirtyMap::EEraseType eraseType);
+    void OnEraseResponse(const TEraseRequestExecutor::TResponse& response);
+    void OnEraseHangingResponse(
+        const TEraseRequestExecutor::TResponse& response);
 
     void UpdatePendingCounters();
 

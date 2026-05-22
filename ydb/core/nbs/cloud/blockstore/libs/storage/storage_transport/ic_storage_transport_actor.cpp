@@ -310,11 +310,33 @@ void TICStorageTransportActor::HandleWriteToManyPersistentBuffers(
         std::move(msg->TraceId)));
 }
 
+static ui64 WriteToManyPersistentBuffersErased = 0;
+static ui64 WriteToManyPersistentBuffersMissed = 0;
+static std::set<ui64> AllWriteToManyPBuffersRequests;
+
 void TICStorageTransportActor::HandleWriteToManyPersistentBuffersResult(
     const NKikimr::NDDisk::TEvWritePersistentBuffersResult::TPtr& ev,
     const TActorContext& ctx)
 {
     const ui64 requestId = ev->Cookie;
+
+    if (AllWriteToManyPBuffersRequests.size() % 1000 == 0) {
+        LOG_WARN(
+            ctx,
+            NKikimrServices::NBS_PARTITION,
+            "WriteToManyPBuffersRequests current size# %lu, estimated current "
+            "size# %d, "
+            "total# %lu, erased# %lu, missed# %lu",
+            WriteToManyPBuffersRequests.size(),
+            AllWriteToManyPBuffersRequests.size() +
+                WriteToManyPersistentBuffersMissed -
+                WriteToManyPersistentBuffersErased,
+            AllWriteToManyPBuffersRequests.size(),
+            WriteToManyPersistentBuffersErased,
+            WriteToManyPersistentBuffersMissed);
+    }
+
+    AllWriteToManyPBuffersRequests.insert(requestId);
 
     LOG_DEBUG(
         ctx,
@@ -328,11 +350,13 @@ void TICStorageTransportActor::HandleWriteToManyPersistentBuffersResult(
             const EWriteStatus status = request.Callback(ev->Get()->Record);
             if (status == EWriteStatus::FINISHED) {
                 WriteToManyPBuffersRequests.erase(requestId);
+                WriteToManyPersistentBuffersErased++;
             }
             // If status is IN_PROGRESS, do NOT erase from map: the callback
             // may be called again when the next response arrives.
         }
     } else {
+        WriteToManyPersistentBuffersMissed++;
         LOG_ERROR(
             ctx,
             NKikimrServices::NBS_PARTITION,
