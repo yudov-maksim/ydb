@@ -133,7 +133,7 @@ void TBaseWriteRequestExecutor::Reply(NProto::TError error)
 void TBaseWriteRequestExecutor::Notify(THostMask completedOnCurrentResponse)
 {
     Y_ABORT_UNLESS(
-        ReplyCallback,
+        NotifyCallback,
         "TBaseWriteRequestExecutor::Notify called without callback set");
 
     LOG_DEBUG(
