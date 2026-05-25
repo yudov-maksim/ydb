@@ -554,7 +554,9 @@ void TDirectBlockGroup::WriteBlocksToManyPBuffers(
                 result) mutable
         {
             // ActorSystem thread
-
+            if (childSpan) {
+                childSpan->Event("Reply on actor thread");
+            }
             for (const auto& singlePBufferResponse: result.GetResult()) {
                 auto it = waitingReplies->find(
                     singlePBufferResponse.GetPersistentBufferId());
@@ -567,24 +569,28 @@ void TDirectBlockGroup::WriteBlocksToManyPBuffers(
                                         : NTransport::EWriteStatus::IN_PROGRESS;
 
             executor->ExecuteSimple(
-                [childSpan = std::move(childSpan),
+                [childSpan,
                  startAt,
                  coordinatorHostIndex,
                  threadChecker,
                  result = std::move(result),
                  callback,
-                 weakSelf =
-                     std::move(weakSelf)]() mutable -> NTransport::EWriteStatus
+                 weakSelf = std::move(weakSelf)]() mutable -> void
                 {
                     Y_ABORT_UNLESS(threadChecker.Check());
+                    if (childSpan) {
+                        childSpan->Event("Reply on DBG thread");
+                    }
+
                     if (auto self = weakSelf.lock()) {
-                        return self->OnWriteBlocksToManyPBuffersResponse(
+                        self->OnWriteBlocksToManyPBuffersResponse(
                             result,
                             coordinatorHostIndex,
                             std::move(callback),
                             TMonotonic::Now() - startAt);
+                        return;
                     }
-                    return callback(
+                    callback(
                         TDBGWriteBlocksToManyPBuffersResponse::MakeOverallError(
                             E_FAIL,
                             "WriteBlocksToManyPBuffersResponse: DBG is "
@@ -594,7 +600,7 @@ void TDirectBlockGroup::WriteBlocksToManyPBuffers(
         });
 }
 
-NTransport::EWriteStatus TDirectBlockGroup::OnWriteBlocksToManyPBuffersResponse(
+void TDirectBlockGroup::OnWriteBlocksToManyPBuffersResponse(
     const NKikimrBlobStorage::NDDisk::TEvWritePersistentBuffersResult& response,
     THostIndex coordinatorHostIndex,
     TWriteBlocksToManyPBuffersCallback callback,
@@ -644,7 +650,8 @@ NTransport::EWriteStatus TDirectBlockGroup::OnWriteBlocksToManyPBuffersResponse(
         executionTime,
         EOperation::WriteToManyPBuffers,
         coordinatorError);
-    return callback(std::move(dbgResponse));
+
+    callback(std::move(dbgResponse));
 }
 
 NThreading::TFuture<TDBGFlushResponse> TDirectBlockGroup::SyncWithPBuffer(

@@ -153,7 +153,7 @@ private:
     void DoListPBuffers();
     void OnPBuffersListed(const TAggregatedListPBufferResponse& response);
 
-    NTransport::EWriteStatus OnWriteBlocksToManyPBuffersResponse(
+    void OnWriteBlocksToManyPBuffersResponse(
         const NKikimrBlobStorage::NDDisk::TEvWritePersistentBuffersResult&
             response,
         THostIndex coordinatorHostIndex,

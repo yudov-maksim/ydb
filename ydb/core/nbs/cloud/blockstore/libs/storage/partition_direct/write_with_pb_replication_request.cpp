@@ -85,8 +85,8 @@ void TWriteWithPbReplicationRequestExecutor::Run()
     ScheduleRequestTimeoutCallback();
     ScheduleHedging();
 
-    ManyPBuffersResponsesWaitingMask = VChunkConfig.PBufferHosts.GetPrimary();
-    SendWriteRequestToManyPBuffers(ManyPBuffersResponsesWaitingMask.Hosts());
+    SendWriteRequestToManyPBuffers(
+        VChunkConfig.PBufferHosts.GetPrimary().Hosts());
 }
 
 void TWriteWithPbReplicationRequestExecutor::SendWriteRequestToManyPBuffers(
@@ -126,11 +126,10 @@ void TWriteWithPbReplicationRequestExecutor::SendWriteRequestToManyPBuffers(
              std::static_pointer_cast<TWriteWithPbReplicationRequestExecutor>(
                  shared_from_this())](
             TDBGWriteBlocksToManyPBuffersResponse response)
-        { return self->OnWriteToManyPBuffersResponse(response); });
+        { self->OnWriteToManyPBuffersResponse(response); });
 }
 
-NTransport::EWriteStatus
-TWriteWithPbReplicationRequestExecutor::OnWriteToManyPBuffersResponse(
+void TWriteWithPbReplicationRequestExecutor::OnWriteToManyPBuffersResponse(
     const TDBGWriteBlocksToManyPBuffersResponse& response)
 {
     if (HasError(response.OverallError)) {
@@ -142,14 +141,14 @@ TWriteWithPbReplicationRequestExecutor::OnWriteToManyPBuffersResponse(
             Request->Headers.VolumeConfig->DiskId.Quote().c_str(),
             Request->Headers.Range.Print().c_str());
         TryToSendDirectWrites(false);
-        return NTransport::EWriteStatus::FINISHED;
+        return;
     }
 
     THostMask completedWritesOfCurrentResponse;
     for (const auto& pbufferResponse: response.Responses) {
         const auto host = pbufferResponse.HostIndex;
         AvailableHostsForDirectSending.Reset(host);
-        ManyPBuffersResponsesWaitingMask.Reset(host);
+
         if (!HasError(pbufferResponse.Error)) {
             LOG_DEBUG(
                 *ActorSystem,
@@ -174,17 +173,13 @@ TWriteWithPbReplicationRequestExecutor::OnWriteToManyPBuffersResponse(
     }
 
     CompletedWrites = CompletedWrites.Include(completedWritesOfCurrentResponse);
-    auto result = ManyPBuffersResponsesWaitingMask.Empty()
-                      ? NTransport::EWriteStatus::FINISHED
-                      : NTransport::EWriteStatus::IN_PROGRESS;
 
     if (ShouldReplyOk()) {
         ReplyOrNotify(MakeError(S_OK), completedWritesOfCurrentResponse);
-        return result;
+        return;
     }
 
     TryToSendDirectWrites(false);
-    return result;
 }
 
 void TWriteWithPbReplicationRequestExecutor::TryToSendDirectWrites(bool isHedge)
