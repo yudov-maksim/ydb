@@ -16,6 +16,10 @@
 #include <ydb/library/actors/core/log.h>
 #include <ydb/library/services/services.pb.h>
 
+#include <execinfo.h>
+#include <iostream>
+#include <cstdlib>
+
 namespace NYdb::NBS::NBlockStore::NStorage::NPartitionDirect {
 
 using namespace NKikimr;
@@ -57,6 +61,18 @@ TListPBufferResponse MakeListPBufferResponse(
             {.VChunkIndex = vChunkIndex, .Lsn = lsn, .Range = range});
     }
     return result;
+}
+
+char** get_backtrace(int max_frames) {
+    void* addresses[max_frames];
+
+    // Получаем адреса возврата в стеке
+    int num_frames = backtrace(addresses, max_frames);
+
+    // Преобразуем адреса в читаемые строки
+    char** symbols = backtrace_symbols(addresses, num_frames);
+
+    return symbols;
 }
 
 }   // namespace
@@ -123,6 +139,33 @@ TDirectBlockGroup::TDirectBlockGroup(
         pbufferIds,
         PBufferConnections,
         EConnectionType::PBuffer);
+}
+
+TDirectBlockGroup::~TDirectBlockGroup()
+{
+    LOG_ERROR(
+        *ActorSystem,
+        NKikimrServices::NBS_PARTITION,
+        "ololo TDirectBlockGroup is destroying. Trying to pring BT");
+
+    int max_frames = 32;
+    char **symbols = get_backtrace(max_frames);
+    if (!symbols) {
+            LOG_ERROR(
+        *ActorSystem,
+        NKikimrServices::NBS_PARTITION,
+        "ololo empty symbols");
+    } else {
+        for (int i = 0; i < max_frames; ++i) {
+            std::cout << symbols[i] << '\n';
+            LOG_ERROR(
+                *ActorSystem,
+                NKikimrServices::NBS_PARTITION,
+                "ololo %s", symbols[i]);
+        }
+
+        free(symbols);
+    }
 }
 
 void TDirectBlockGroup::Register(TVChunkWeakPtr vChunk)
@@ -575,7 +618,7 @@ void TDirectBlockGroup::WriteBlocksToManyPBuffers(
                  threadChecker,
                  result = std::move(result),
                  callback,
-                 weakSelf = std::move(weakSelf)]() mutable -> void
+                 weakSelf]() mutable -> void
                 {
                     Y_ABORT_UNLESS(threadChecker.Check());
                     if (childSpan) {

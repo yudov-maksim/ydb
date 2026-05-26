@@ -106,6 +106,7 @@ TOracle::TOracle(
 
 void TOracle::Think(TInstant now)
 {
+    return;
     const TOracleConfig config(StorageConfig);
 
     TVector<EHostHealth> newStatuses(Statuses);

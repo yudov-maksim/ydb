@@ -193,7 +193,7 @@ void TWriteWithPbReplicationRequestExecutor::TryToSendDirectWrites(bool isHedge)
         Request->Headers.VolumeConfig->DiskId.Quote().c_str(),
         Request->Headers.Range.Print().c_str());
 
-    bool needToSend = CompletedWrites.Count() + ActiveDirectWritesNumber <
+    bool needToSend = CompletedWrites.Count() + ActiveDirectWrites.Count() <
                       QuorumDirectBlockGroupHostCount;
 
     // We are relying on the IC layer: a reply will eventually arrive,
@@ -204,7 +204,7 @@ void TWriteWithPbReplicationRequestExecutor::TryToSendDirectWrites(bool isHedge)
 
     size_t neededRequestsNumber = QuorumDirectBlockGroupHostCount -
                                   CompletedWrites.Count() -
-                                  ActiveDirectWritesNumber;
+                                  ActiveDirectWrites.Count();
     bool haveEnoughAvailableHostsForSending =
         neededRequestsNumber <= AvailableHostsForDirectSending.Count();
 
@@ -222,6 +222,17 @@ void TWriteWithPbReplicationRequestExecutor::TryToSendDirectWrites(bool isHedge)
 
         ReplyOrNotify(resultError, {});
         return;
+    }
+
+    if (!neededRequestsNumber || AvailableHostsForDirectSending.Count() < neededRequestsNumber) {
+        // это невозможная ситуация
+        LOG_ERROR(
+            *ActorSystem,
+            NKikimrServices::NBS_PARTITION,
+            "ololo failed assert for TakeNHosts %s %s",
+            Request->Headers.VolumeConfig->DiskId.Quote().c_str(),
+            Request->Headers.Range.Print().c_str());
+        std::this_thread::sleep_for(std::chrono::milliseconds(15));
     }
 
     TVector<std::optional<THostIndex>> mainCandidates = {
@@ -259,7 +270,7 @@ void TWriteWithPbReplicationRequestExecutor::OnWriteResponse(
         Request->Headers.VolumeConfig->DiskId.Quote().c_str(),
         Request->Headers.Range.Print().c_str());
 
-    --ActiveDirectWritesNumber;
+    ActiveDirectWrites.Reset(host);
 
     if (!HasError(response.Error)) {
         CompletedWrites.Set(host);
@@ -313,8 +324,17 @@ void TWriteWithPbReplicationRequestExecutor::ScheduleHedging()
 void TWriteWithPbReplicationRequestExecutor::SendDirectWriteRequest(
     THostIndex host)
 {
-    ++ActiveDirectWritesNumber;
+    ActiveDirectWrites.Set(host);
     SendWriteRequest(host);
+}
+
+TString TWriteWithPbReplicationRequestExecutor::ExtendedDebugState() const
+{
+    TString result = TBaseWriteRequestExecutor::ExtendedDebugState();
+    result += "AvailableHostsForDirectSending: " + AvailableHostsForDirectSending.Print();
+    result += "ActiveDirectWrites" + ActiveDirectWrites.Print();
+
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

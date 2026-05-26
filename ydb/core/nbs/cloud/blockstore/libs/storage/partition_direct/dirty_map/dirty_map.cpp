@@ -870,7 +870,10 @@ TReadRangeHint TBlocksDirtyMap::MakeReadRangeHint(
         mask = FilterLocations(mask, range);
     }
     mask = mask.Exclude(DisabledHosts);
-    Y_ABORT_UNLESS(!mask.Empty());
+    if (mask.Empty()) {
+        mask = mask.Include(DesiredDDisks);
+    }
+    Y_ABORT_UNLESS(!mask.Empty(), "MakeReadRangeHint empty mask");
 
     return TReadRangeHint(
         mask,

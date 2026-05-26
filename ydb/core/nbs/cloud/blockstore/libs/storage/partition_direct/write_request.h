@@ -77,6 +77,7 @@ protected:
     [[nodiscard]] bool ShouldReplyOk() const;
 
     TVector<THostIndex> GetAvailableHandOffHosts() const;
+    virtual TString ExtendedDebugState() const;
 
     virtual void ScheduleHedging() = 0;
 
