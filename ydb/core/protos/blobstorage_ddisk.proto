@@ -14,7 +14,7 @@ message TReplyStatus {
         ERROR = 2;
 
         // The connecting tablet's generation is lower than the maximum generation DDisk has seen for
-        // that tablet, meaning this is a stale instance that must be rejected.
+        // that tablet, meaning this is a stale instance that must be rejected ololo.
         BLOCKED = 3;
 
         // A read io_uring operation returned EIO: the data on disk is corrupted or otherwise
