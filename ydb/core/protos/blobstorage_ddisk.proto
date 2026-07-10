@@ -61,6 +61,9 @@ message TReplyStatus {
         // The request can't be executed right now, the caller must retry later. Possible causes:
         // - chunk deletion requested while chunk allocation is in progress
         BUSY = 11;
+
+        // The device is broken. Service should decommission the device.
+        BROKEN = 12;
     }
 }
 

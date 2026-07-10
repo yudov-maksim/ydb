@@ -292,25 +292,18 @@ TDirectBlockGroup::ReadBlocksFromDDisk(
                     Y_ABORT_UNLESS(threadChecker.Check());
 
                     if (auto self = weakSelf.lock()) {
-                        NProto::TError error = TranslateError(f.GetValue());
-
-                        if (IsBlockedStatus(f.GetValue().GetStatus())) {
-                            self->HandleBlockedGeneration(
-                                hostIndex,
-                                "ReadFromDDisk",
-                                f.GetValue().GetStatus());
-                            error = MakeTabletGenerationBlockedError();
-                        }
+                        auto errors =
+                            TranslateErrorComposite(f.GetValue(), true);
 
                         self->OnResponse(
                             hostIndex,
                             TMonotonic::Now() - startAt,
                             EOperation::ReadFromDDisk,
                             true,
-                            error);
+                            errors.InternalError);
 
-                        promise.SetValue(
-                            TDBGReadBlocksResponse{.Error = std::move(error)});
+                        promise.SetValue(TDBGReadBlocksResponse{
+                            .Error = std::move(errors.UserError)});
                     } else {
                         promise.SetValue(TDBGReadBlocksResponse{
                             .Error = MakeError(E_CANCELLED)});
@@ -456,24 +449,18 @@ TDirectBlockGroup::WriteBlocksToDDisk(
                     Y_ABORT_UNLESS(threadChecker.Check());
 
                     if (auto self = weakSelf.lock()) {
-                        NProto::TError error = TranslateError(f.GetValue());
+                        auto errors =
+                            TranslateErrorComposite(f.GetValue(), true);
 
-                        if (IsBlockedStatus(f.GetValue().GetStatus())) {
-                            self->HandleBlockedGeneration(
-                                hostIndex,
-                                "WriteToDDisk",
-                                f.GetValue().GetStatus());
-                            error = MakeTabletGenerationBlockedError();
-                        }
                         self->OnResponse(
                             hostIndex,
                             TMonotonic::Now() - startAt,
                             EOperation::WriteToDDisk,
                             true,
-                            error);
+                            errors.InternalError);
 
-                        promise.SetValue(
-                            TDBGWriteBlocksResponse{.Error = std::move(error)});
+                        promise.SetValue(TDBGWriteBlocksResponse{
+                            .Error = std::move(errors.UserError)});
                     } else {
                         promise.SetValue(TDBGWriteBlocksResponse{
                             .Error = MakeError(E_CANCELLED)});
@@ -848,11 +835,12 @@ TDBGFlushResponse TDirectBlockGroup::HandleSyncWithPBufferResponse(
             FormatError(TranslateError(response)).c_str());
 
         auto error = MakeError(E_FAIL, response.GetErrorReason());
-        if (IsBlockedStatus(response.GetStatus())) {
-            HandleBlockedGeneration(
-                ddiskHostIndex,
-                "SyncWithPBuffer",
-                response.GetStatus());
+        auto internalError = TranslateErrorInternal(
+            response.GetStatus(),
+            response.GetErrorReason(),
+            true);
+        if (IsSuicideError(internalError)) {
+            HandleBlockedGeneration(ddiskHostIndex, "SyncWithPBuffer");
             error = MakeTabletGenerationBlockedError();
         }
 
@@ -1455,7 +1443,7 @@ void TDirectBlockGroup::OnConnectionEstablished(
         // INVARIANT: PBuffer does NOT require a session/lock
     } else if (IsBlockedStatus(result.GetStatus())) {
         // Terminal: our tablet generation is stale. Suicide, no reconnect.
-        HandleBlockedGeneration(index, "Connect", result.GetStatus());
+        HandleBlockedGeneration(index, "Connect");
         // Unblock waiters on ConnectFuture with the error.
         connection.ConnectPromise.SetValue(error);
         return;
@@ -1638,6 +1626,10 @@ void TDirectBlockGroup::OnResponse(
 
         if (IsCancelledError(error)) {
             Oracle.OnRequestCancelled(hostIndex, operation, TInstant::Now());
+        } else if (IsDeviceBrokenError(error)) {
+            Oracle.OnDDiskBroken(hostIndex);
+        } else if (IsSuicideError(error)) {
+            HandleBlockedGeneration(hostIndex, ToString(operation));
         } else {
             Oracle.OnRequestFailed(hostIndex, operation, TInstant::Now());
         }
@@ -1761,9 +1753,9 @@ bool TDirectBlockGroup::WaitForSessionLock(THostIndex hostIndex)
 
 void TDirectBlockGroup::HandleBlockedGeneration(
     THostIndex hostIndex,
-    TStringBuf context,
-    NKikimrBlobStorage::NDDisk::TReplyStatus_E status)
+    TStringBuf context)
 {
+    using namespace NKikimrBlobStorage::NDDisk;
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
 
     if (BlockedGenerationDetected) {
@@ -1778,8 +1770,7 @@ void TDirectBlockGroup::HandleBlockedGeneration(
                            << "; " << PrintHostIndex(hostIndex)
                            << "; DBGIndex: " << DirectBlockGroupIndex
                            << "; status="
-                           << NKikimrBlobStorage::NDDisk::TReplyStatus_E_Name(
-                                  status);
+                           << TReplyStatus_E_Name(TReplyStatus::BLOCKED);
 
     LOG_CRIT(
         *ActorSystem,

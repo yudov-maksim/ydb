@@ -37,6 +37,36 @@ NProto::TError TranslateError(
         TReplyStatus_E_Name(errorResponse) + " " + errorReason);
 }
 
+NProto::TError TranslateErrorInternal(
+    NKikimrBlobStorage::NDDisk::TReplyStatus_E status,
+    const TString& errorReason,
+    bool canBlocked,
+    ETranslateFlags flags)
+{
+    if (status == NKikimrBlobStorage::NDDisk::TReplyStatus::BLOCKED &&
+        canBlocked)
+    {
+        return MakeError(E_PRECONDITION_FAILED, errorReason);
+    }
+    if (status == NKikimrBlobStorage::NDDisk::TReplyStatus::BROKEN) {
+        return MakeError(E_INVALID_STATE, errorReason);
+    }
+
+    return TranslateError(status, errorReason, flags);
+}
+
+TCompositeError TranslateErrorComposite(
+    NKikimrBlobStorage::NDDisk::TReplyStatus_E status,
+    const TString& errorReason,
+    bool canBlocked,
+    ETranslateFlags flags)
+{
+    return TCompositeError{
+        .UserError = TranslateError(status, errorReason, flags),
+        .InternalError =
+            TranslateErrorInternal(status, errorReason, canBlocked, flags)};
+}
+
 bool HasSuccess(NKikimrBlobStorage::NDDisk::TReplyStatus_E errorResponse)
 {
     return errorResponse == NKikimrBlobStorage::NDDisk::TReplyStatus::OK;

@@ -24,6 +24,12 @@ enum class ETranslateFlags
     TreatOutdatedAsSuccess,
 };
 
+struct TCompositeError
+{
+    NProto::TError UserError;
+    NProto::TError InternalError;
+};
+
 NProto::TError TranslateError(
     NKikimrBlobStorage::NDDisk::TReplyStatus_E errorResponse,
     const TString& errorReason,
@@ -37,6 +43,31 @@ NProto::TError TranslateError(
     return TranslateError(
         response.GetStatus(),
         response.GetErrorReason(),
+        flags);
+}
+
+NProto::TError TranslateErrorInternal(
+    NKikimrBlobStorage::NDDisk::TReplyStatus_E status,
+    const TString& errorReason,
+    bool canBlocked,
+    ETranslateFlags flags = ETranslateFlags::None);
+
+TCompositeError TranslateErrorComposite(
+    NKikimrBlobStorage::NDDisk::TReplyStatus_E status,
+    const TString& errorReason,
+    bool canBlocked = false,
+    ETranslateFlags flags = ETranslateFlags::None);
+
+template <typename T>
+TCompositeError TranslateErrorComposite(
+    const T& response,
+    bool canBlocked = false,
+    ETranslateFlags flags = ETranslateFlags::None)
+{
+    return TranslateErrorComposite(
+        response.GetStatus(),
+        response.GetErrorReason(),
+        canBlocked,
         flags);
 }
 

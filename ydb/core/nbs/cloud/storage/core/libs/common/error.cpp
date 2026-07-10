@@ -194,6 +194,16 @@ bool IsConnectionError(const NProto::TError& e)
     return e.GetCode() == E_GRPC_UNAVAILABLE;
 }
 
+bool IsDeviceBrokenError(const NProto::TError& e)
+{
+    return e.GetCode() == E_INVALID_STATE;
+}
+
+bool IsSuicideError(const NProto::TError& e)
+{
+    return e.GetCode() == E_PRECONDITION_FAILED;
+}
+
 NJson::TJsonValue FormatErrorJson(const NProto::TError& e)
 {
     NJson::TJsonValue result;

@@ -823,7 +823,7 @@ Y_UNIT_TEST_SUITE(TDirectBlockGroupTest)
                     NWilson::TTraceId());
             });
         UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
+            E_FAIL,
             GetResponse(pendingWrite).Error.GetCode());
 
         const auto state = GetBlockedDetected(executor, dbg, 0);
@@ -862,7 +862,7 @@ Y_UNIT_TEST_SUITE(TDirectBlockGroupTest)
                     NWilson::TTraceId());
             });
         UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
+            E_FAIL,
             GetResponse(pendingRead).Error.GetCode());
 
         const auto state = GetBlockedDetected(executor, dbg, 0);
@@ -950,7 +950,7 @@ Y_UNIT_TEST_SUITE(TDirectBlockGroupTest)
                         NWilson::TTraceId());
                 });
             UNIT_ASSERT_VALUES_EQUAL(
-                E_REJECTED,
+                E_FAIL,
                 GetResponse(pendingWrite).Error.GetCode());
         }
 
