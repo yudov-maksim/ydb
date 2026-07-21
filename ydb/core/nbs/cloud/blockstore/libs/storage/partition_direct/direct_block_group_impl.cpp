@@ -82,6 +82,7 @@ THostSnapshot MakeHostSnapshot(const TOracleHostStat& stat)
 // help function for TDirectBlockGroup::SyncWithPBuffer
 std::function<void(const TFuture<NProto::TError>&)>
 CreateWaitSessionCbForSyncWithPBuffer(
+    NActors::TActorSystem *const actorSystem,
     TPromise<TDBGFlushResponse>&& promise,
     std::weak_ptr<TDirectBlockGroup>&& weakSelf,
     ui32 vChunkIndex,
@@ -91,7 +92,8 @@ CreateWaitSessionCbForSyncWithPBuffer(
     std::shared_ptr<NWilson::TSpan> childSpan)
 {
     using TDBGFlushResponseFuture = NThreading::TFuture<TDBGFlushResponse>;
-    auto cb = [weakSelf = std::move(weakSelf),
+    auto cb = [actorSystem,
+               weakSelf = std::move(weakSelf),
                promise = std::move(promise),
                vChunkIndex,
                pbufferHostIndex,
@@ -102,6 +104,13 @@ CreateWaitSessionCbForSyncWithPBuffer(
     {
         TDBGFlushResponse flushResponse;
         if (HasError(f.GetValue())) {
+            LOG_WARN(
+                *actorSystem,
+                NKikimrServices::NBS_PARTITION,
+                "CreateWaitSessionCbForSyncWithPBuffer session connect error: %s; ddisk: %s",
+                FormatError(f.GetValue()).c_str(),
+                PrintHostIndex(ddiskHostIndex).c_str());
+
             for (size_t i = 0; i < segments.size(); ++i) {
                 flushResponse.Errors.push_back(MakeError(
                     E_REJECTED,
@@ -869,6 +878,7 @@ NThreading::TFuture<TDBGFlushResponse> TDirectBlockGroup::SyncWithPBuffer(
         }
 
         auto cb = CreateWaitSessionCbForSyncWithPBuffer(
+            ActorSystem,
             std::move(promise),
             std::move(weak_from_this()),
             vChunkIndex,
@@ -1311,7 +1321,7 @@ void TDirectBlockGroup::OnAddHostResult(
     Y_ABORT_UNLESS(DDiskConnections.size() < MaxHostCount);
     Y_ABORT_UNLESS(!DDiskConnections.empty());
 
-    LOG_INFO(
+    LOG_WARN(
         *ActorSystem,
         NKikimrServices::NBS_PARTITION,
         "%s AddHost %s request OK",
@@ -1323,8 +1333,8 @@ void TDirectBlockGroup::OnAddHostResult(
         NBsController::TDDiskId(ddiskId),
         NBsController::TDDiskId(pbufferId));
 
-    DoEstablishConnection(newHostIndex, EConnectionType::DDisk);
-    DoEstablishConnection(newHostIndex, EConnectionType::PBuffer);
+    DoEstablishConnection(newHostIndex, EConnectionType::DDisk, (ui32)-1);
+    DoEstablishConnection(newHostIndex, EConnectionType::PBuffer, (ui32)-1);
 }
 
 NThreading::TFuture<TDbgSnapshot> TDirectBlockGroup::BuildMonSnapshot() const
@@ -1377,7 +1387,7 @@ void TDirectBlockGroup::QueryAddHost(THostIndex newHostIndex)
 
     // No gate here: the authoritative MaxHostCount check is in the partition
     // (the DBG's DDiskConnections count lags). The DBG just forwards.
-    LOG_INFO(
+    LOG_WARN(
         *ActorSystem,
         NKikimrServices::NBS_PARTITION,
         "%s QueryAddHost %s",
@@ -1447,11 +1457,11 @@ void TDirectBlockGroup::DoEstablishConnections()
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
 
     for (size_t i = 0; i < DDiskConnections.size(); ++i) {
-        DoEstablishConnection(i, EConnectionType::DDisk);
+        DoEstablishConnection(i, EConnectionType::DDisk, (ui32)-1);
     }
 
     for (size_t i = 0; i < PBufferConnections.size(); ++i) {
-        DoEstablishConnection(i, EConnectionType::PBuffer);
+        DoEstablishConnection(i, EConnectionType::PBuffer, (ui32)-1);
     }
 
     DoListPBuffers();
@@ -1459,7 +1469,8 @@ void TDirectBlockGroup::DoEstablishConnections()
 
 void TDirectBlockGroup::DoEstablishConnection(
     THostIndex hostIndex,
-    EConnectionType connectionType)
+    EConnectionType connectionType,
+    ui32 nodeId)
 {
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
 
@@ -1470,13 +1481,22 @@ void TDirectBlockGroup::DoEstablishConnection(
     if (connectionType == EConnectionType::DDisk) {
         actualSeqNo++;
 
-        LOG_INFO(
+        LOG_WARN(
             *ActorSystem,
             NKikimrServices::NBS_PARTITION,
-            "%s %s starting session: new seq_no: %lu",
+            "%s %s starting session for node %u: new seq_no: %lu",
             LogTitle.GetWithTime().c_str(),
             PrintHostIndex(hostIndex).c_str(),
+            nodeId,
             actualSeqNo);
+    } else {
+        LOG_WARN(
+            *ActorSystem,
+            NKikimrServices::NBS_PARTITION,
+            "%s %s starting session/connection for node %u pbuffer",
+            LogTitle.GetWithTime().c_str(),
+            PrintHostIndex(hostIndex).c_str(),
+            nodeId);
     }
 
     using TEvConnectResult = NKikimrBlobStorage::NDDisk::TEvConnectResult;
@@ -1503,7 +1523,8 @@ void TDirectBlockGroup::DoEstablishConnection(
          executor = Executor,
          connectionType = connection.HostConnection.ConnectionType,
          hostIndex,
-         actualSeqNo]   //
+         actualSeqNo,
+         nodeId]   //
         (const TFuture<TEvConnectResult>& f) mutable
         {
             executor->ExecuteSimple(
@@ -1511,7 +1532,8 @@ void TDirectBlockGroup::DoEstablishConnection(
                  connectionType,
                  hostIndex,
                  f,
-                 actualSeqNo]   //
+                 actualSeqNo,
+                nodeId]   //
                 () mutable
                 {
                     if (auto self = weakSelf.lock()) {
@@ -1519,7 +1541,8 @@ void TDirectBlockGroup::DoEstablishConnection(
                             connectionType,
                             hostIndex,
                             actualSeqNo,
-                            f.GetValue());
+                            f.GetValue(),
+                            nodeId);
                     }
                 });
         });
@@ -1529,7 +1552,8 @@ void TDirectBlockGroup::OnConnectionEstablished(
     EConnectionType connectionType,
     THostIndex hostIndex,
     ui64 seqNo,
-    const NKikimrBlobStorage::NDDisk::TEvConnectResult& result)
+    const NKikimrBlobStorage::NDDisk::TEvConnectResult& result,
+    ui32 nodeId)
 {
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
 
@@ -1538,6 +1562,16 @@ void TDirectBlockGroup::OnConnectionEstablished(
                                        : PBufferConnections[hostIndex];
 
     NProto::TError error = TranslateError(result);
+    LOG_WARN(
+            *ActorSystem,
+            NKikimrServices::NBS_PARTITION,
+            "%s OnConnectionEstablished for node %u: %s, %s, connectionType :%d",
+            LogTitle.GetWithTime().c_str(),
+            nodeId,
+            PrintHostIndex(hostIndex).c_str(),
+            FormatError(error).c_str(),
+            connectionType);
+
     if (!HasError(error)) {
         connection.HostConnection.Credentials.DDiskInstanceGuid =
             result.GetDDiskInstanceGuid();
@@ -1573,7 +1607,7 @@ void TDirectBlockGroup::OnConnectionEstablished(
             LogTitle.GetWithTime().c_str(),
             PrintHostIndex(hostIndex).c_str(),
             FormatError(error).c_str());
-        ReEstablishConnection(connectionType, hostIndex);
+        ReEstablishConnection(connectionType, hostIndex, nodeId);
         return;
     }
 
@@ -1582,7 +1616,7 @@ void TDirectBlockGroup::OnConnectionEstablished(
     connection.ConnectPromise.SetValue(error);
     if (!IsInitialized() && HasLockedQuorum() && HasPBufferQuorum()) {
         InitialReadyPromise.SetValue();
-        LOG_INFO(
+        LOG_WARN(
             *ActorSystem,
             NKikimrServices::NBS_PARTITION,
             "%s DBG reached initial locked quorum (>= %zu sessions)",
@@ -1593,7 +1627,8 @@ void TDirectBlockGroup::OnConnectionEstablished(
 
 void TDirectBlockGroup::ReEstablishConnection(
     EConnectionType connectionType,
-    THostIndex hostIndex)
+    THostIndex hostIndex,
+    ui32 nodeId)
 {
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
     auto& connections = connectionType == EConnectionType::DDisk
@@ -1601,6 +1636,17 @@ void TDirectBlockGroup::ReEstablishConnection(
                             : PBufferConnections;
     Y_ABORT_UNLESS(hostIndex < connections.size());
     TDDiskConnection& connection = connections[hostIndex];
+    TDuration reconnectDelay = Oracle.GetHostReconnectDelay(hostIndex);
+
+    LOG_WARN(
+        *ActorSystem,
+        NKikimrServices::NBS_PARTITION,
+        "%s %s ReEstablishConnection to node %u, connectionType :%d after %s",
+        LogTitle.GetWithTime().c_str(),
+        PrintHostIndex(hostIndex).c_str(),
+        nodeId,
+        connectionType,
+        reconnectDelay.ToString().c_str());
 
     if (BlockedGenerationDetected) {
         LOG_WARN(
@@ -1612,13 +1658,12 @@ void TDirectBlockGroup::ReEstablishConnection(
     }
 
     connection.ResetSession();
-    TDuration reconnectDelay = Oracle.GetHostReconnectDelay(hostIndex);
     Schedule(
         reconnectDelay,
-        [hostIndex, weakSelf = weak_from_this(), connectionType]()
+        [hostIndex, weakSelf = weak_from_this(), connectionType, nodeId]()
         {
             if (auto self = weakSelf.lock()) {
-                self->DoEstablishConnection(hostIndex, connectionType);
+                self->DoEstablishConnection(hostIndex, connectionType, nodeId);
             }
         });
 }
@@ -1630,7 +1675,7 @@ void TDirectBlockGroup::OnNodeDisconnected(THostIndex hostIndex, ui32 nodeId)
     LOG_WARN(
         *ActorSystem,
         NKikimrServices::NBS_PARTITION,
-        "%s OnNodeDisconnected, %s, nodeId: %d",
+        "%s OnNodeDisconnected, %s, for nodeId: %d",
         LogTitle.GetWithTime().c_str(),
         PrintHostIndex(hostIndex).c_str(),
         nodeId);
@@ -1638,7 +1683,7 @@ void TDirectBlockGroup::OnNodeDisconnected(THostIndex hostIndex, ui32 nodeId)
     Oracle.OnDDiskDisconnected(hostIndex, TInstant::Now());
 
     // OnNodeDisconnected may be called only for DDisk
-    ReEstablishConnection(EConnectionType::DDisk, hostIndex);
+    ReEstablishConnection(EConnectionType::DDisk, hostIndex, nodeId);
 }
 
 bool TDirectBlockGroup::HasPBufferQuorum() const

@@ -188,15 +188,16 @@ private:
     void DoEstablishConnections();
     void DoEstablishConnection(
         THostIndex hostIndex,
-        EConnectionType connectionType);
+        EConnectionType connectionType, ui32 nodeId);
     void OnConnectionEstablished(
         EConnectionType connectionType,
         THostIndex hostIndex,
         ui64 seqNo,
-        const NKikimrBlobStorage::NDDisk::TEvConnectResult& result);
+        const NKikimrBlobStorage::NDDisk::TEvConnectResult& result, ui32 nodeId);
     void ReEstablishConnection(
         EConnectionType connectionType,
-        THostIndex hostIndex);
+        THostIndex hostIndex,
+        ui32 nodeId);
     void OnNodeDisconnected(THostIndex hostIndex, ui32 nodeId);
 
     [[nodiscard]] bool HasPBufferQuorum() const;

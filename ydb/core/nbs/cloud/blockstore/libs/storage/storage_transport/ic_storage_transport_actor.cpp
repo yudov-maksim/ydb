@@ -242,7 +242,7 @@ void TICStorageTransportActor::HandleConnectResult(
 {
     const ui64 requestId = ev->Cookie;
 
-    LOG_DEBUG(
+    LOG_WARN(
         ctx,
         NKikimrServices::NBS_PARTITION,
         "%s Received TEvConnectResult with requestId# %lu",
