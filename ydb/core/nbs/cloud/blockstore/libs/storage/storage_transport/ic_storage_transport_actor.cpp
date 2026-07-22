@@ -185,18 +185,20 @@ void TICStorageTransportActor::HandleConnect(
     const TActorContext& ctx)
 {
     const ui64 requestId = ++RequestIdGenerator;
-    LOG_DEBUG(
-        ctx,
-        NKikimrServices::NBS_PARTITION,
-        "%s Sent TEvConnect with requestId# %lu",
-        LogTitle.GetWithTime().c_str(),
-        requestId);
 
     auto [it, inserted] =
         ConnectRequests.emplace(requestId, ev->Release().Release());
     Y_ABORT_UNLESS(inserted);
 
     const auto& request = *it->second;
+
+    LOG_WARN(
+        ctx,
+        NKikimrServices::NBS_PARTITION,
+        "%s Sent TEvConnect with requestId# %lu; ServiceId %s",
+        LogTitle.GetWithTime().c_str(),
+        requestId,
+        request.ServiceId.ToString().c_str());
 
     SendWithUndeliveryTracking(
         ctx,

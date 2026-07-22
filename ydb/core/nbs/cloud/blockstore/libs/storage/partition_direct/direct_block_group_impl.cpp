@@ -1652,10 +1652,21 @@ void TDirectBlockGroup::ReEstablishConnection(
         LOG_WARN(
             *ActorSystem,
             NKikimrServices::NBS_PARTITION,
-            "%s reconnect suppressed: blocked generation, suicide in progress",
-            LogTitle.GetWithTime().c_str());
+            "%s reconnect suppressed: blocked generation, suicide in progress for nodeId %u",
+            LogTitle.GetWithTime().c_str(),
+            nodeId);
         return;
     }
+
+    LOG_WARN(
+        *ActorSystem,
+        NKikimrServices::NBS_PARTITION,
+        "%s %s ReEstablishConnection to node %u after check suicide, connectionType :%d after %s",
+        LogTitle.GetWithTime().c_str(),
+        PrintHostIndex(hostIndex).c_str(),
+        nodeId,
+        connectionType,
+        reconnectDelay.ToString().c_str());
 
     connection.ResetSession();
     Schedule(
